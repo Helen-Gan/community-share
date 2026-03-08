@@ -30,6 +30,17 @@
     <!-- 主内容 -->
     <main class="main-content">
         <div class="container">
+            <!-- 猜你喜欢：个性化推荐区域 -->
+            <div id="recommendationsSection" class="recommendations-section" style="display: none;">
+                <div class="section-header">
+                    <h2 class="section-title">💡 猜你喜欢</h2>
+                    <span class="section-subtitle">基于你的浏览记录推荐</span>
+                </div>
+                <div class="recommendations-scroll" id="recommendationsList">
+                    <!-- 推荐卡片将通过JavaScript动态生成 -->
+                </div>
+            </div>
+
             <!-- 搜索和筛选栏 -->
             <div class="search-bar">
                 <div class="search-input">
@@ -74,6 +85,7 @@
         document.addEventListener('DOMContentLoaded', async () => {
             checkAuth();
             loadCategories();
+            loadRecommendations(); // 加载个性化推荐
             loadItems();
 
             // 搜索防抖
@@ -109,6 +121,54 @@
         let currentCategory = 'all';
         let currentPage = 1;
         let hasMore = true;
+
+        // 加载个性化推荐（猜你喜欢）
+        async function loadRecommendations() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                // 未登录用户不显示推荐
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/v1/items/recommendations?limit=10', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                const result = await response.json();
+
+                if (result.success && result.data && result.data.length >= 3) {
+                    const container = document.getElementById('recommendationsList');
+                    const section = document.getElementById('recommendationsSection');
+
+                    container.innerHTML = result.data.map(item => `
+                        <div class="recommendation-card" onclick="window.location.href='detail.html?id=${item.id}'">
+                            <div class="recommendation-image">
+                                <img src="${item.thumbnailUrl}" alt="${item.title}" loading="lazy">
+                            </div>
+                            <div class="recommendation-info">
+                                <h4 class="recommendation-title">${item.title}</h4>
+                                <div class="recommendation-meta">
+                                    <span class="recommendation-price">${item.priceDisplay}</span>
+                                    <span class="recommendation-condition">${item.condition}</span>
+                                </div>
+                                <div class="recommendation-user">
+                                    <img src="${item.user.avatar}" alt="${item.user.nickname}">
+                                    <span>${item.user.nickname}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+
+                    // 显示推荐区域
+                    section.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('加载推荐失败:', error);
+                // 静默失败，不显示推荐区域
+            }
+        }
 
         // 加载分类
         async function loadCategories() {

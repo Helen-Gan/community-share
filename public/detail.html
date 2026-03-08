@@ -47,7 +47,8 @@
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             checkAuth();
-            loadItemDetail();
+            await loadItemDetail();
+            recordItemView(); // 记录浏览行为（用于个性化推荐）
         });
 
         async function loadItemDetail() {
@@ -249,6 +250,32 @@
             }).catch(() => {
                 showToast('复制失败', 'error');
             });
+        }
+
+        // 记录用户浏览行为（用于个性化推荐）
+        async function recordItemView() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                // 未登录用户不记录
+                return;
+            }
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const itemId = urlParams.get('id');
+            if (!itemId) return;
+
+            try {
+                await fetch(`/api/v1/items/${itemId}/view`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                // 静默记录，不需要显示结果
+            } catch (error) {
+                console.error('记录浏览行为失败:', error);
+            }
         }
 
         // 图片轮播相关

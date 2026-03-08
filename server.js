@@ -153,6 +153,19 @@ function initDatabase() {
             if (err) console.error('创建 contacts 表失败:', err.message);
         });
 
+        // 用户浏览记录表（用于个性化推荐）
+        db.run(`CREATE TABLE IF NOT EXISTS user_views (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            item_id INTEGER NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
+            UNIQUE(user_id, item_id)
+        )`, (err) => {
+            if (err) console.error('创建 user_views 表失败:', err.message);
+        });
+
         // 初始化分类数据（确保表已创建）
         const categories = [
             ['数码电子', '📱', 1],
@@ -536,6 +549,146 @@ app.get('/api/v1/items', (req, res) => {
                 total,
                 totalPages
             }));
+        });
+    });
+});
+
+// 记录用户浏览行为（用于个性化推荐）
+app.post('/api/v1/items/:id/view', authenticateToken, (req, res) => {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    // 验证物品是否存在
+    db.get('SELECT id FROM items WHERE id = ?', [id], (err, item) => {
+        if (err) {
+            return res.status(500).json(errorResponse(9999, '服务器错误'));
+        }
+        if (!item) {
+            return res.status(404).json(errorResponse(3001, '物品不存在'));
+        }
+
+        // 插入或更新浏览记录（使用 INSERT OR REPLACE 处理唯一约束）
+        db.run(
+            `INSERT OR REPLACE INTO user_views (user_id, item_id, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)`,
+            [userId, id],
+            (err) => {
+                if (err) {
+                    console.error('记录浏览行为失败:', err);
+                    return res.status(500).json(errorResponse(9999, '记录浏览行为失败'));
+                }
+                res.json(successResponse(null, '浏览记录已保存'));
+            }
+        );
+    });
+});
+
+// 获取个性化推荐物品
+app.get('/api/v1/items/recommendations', authenticateToken, (req, res) => {
+    const userId = req.user.id;
+    const { limit = 10 } = req.query;
+
+    // 查询用户最近浏览的3个物品的分类和关键词
+    const recentViewsQuery = `
+        SELECT i.id, i.category_id, i.title, i.description
+        FROM user_views uv
+        JOIN items i ON uv.item_id = i.id
+        WHERE uv.user_id = ?
+        ORDER BY uv.created_at DESC
+        LIMIT 3
+    `;
+
+    db.all(recentViewsQuery, [userId], (err, recentItems) => {
+        if (err) {
+            console.error('查询浏览记录失败:', err);
+            return res.status(500).json(errorResponse(9999, '服务器错误'));
+        }
+
+        // 如果没有浏览记录，返回空数组
+        if (!recentItems || recentItems.length === 0) {
+            return res.json(successResponse([], '暂无推荐'));
+        }
+
+        // 提取分类ID和关键词
+        const categoryIds = [...new Set(recentItems.map(item => item.category_id))];
+        const keywords = [];
+        recentItems.forEach(item => {
+            // 从标题中提取关键词（长度大于2的中文词）
+            const titleWords = item.title.match(/[\u4e00-\u9fa5]{2,}/g) || [];
+            keywords.push(...titleWords);
+        });
+        const uniqueKeywords = [...new Set(keywords)].slice(0, 5); // 最多取5个关键词
+
+        // 构建推荐查询
+        let recommendQuery = `
+            SELECT 
+                i.id, i.title, i.price, i.condition, i.status, i.view_count, i.created_at,
+                c.name as category_name,
+                u.id as user_id, u.nickname as user_nickname, u.avatar as user_avatar,
+                (SELECT image_url FROM item_images WHERE item_id = i.id ORDER BY sort_order LIMIT 1) as thumbnail_url
+            FROM items i
+            JOIN categories c ON i.category_id = c.id
+            JOIN users u ON i.user_id = u.id
+            WHERE i.status = 'available'
+            AND i.user_id != ?
+            AND i.id NOT IN (
+                SELECT item_id FROM user_views WHERE user_id = ?
+            )
+        `;
+
+        const params = [userId, userId];
+
+        // 添加分类筛选条件
+        if (categoryIds.length > 0) {
+            const placeholders = categoryIds.map(() => '?').join(',');
+            recommendQuery += ` AND (i.category_id IN (${placeholders})`;
+            params.push(...categoryIds);
+
+            // 添加关键词筛选条件
+            if (uniqueKeywords.length > 0) {
+                recommendQuery += ` OR (`;
+                const keywordConditions = uniqueKeywords.map(() => `i.title LIKE ?`).join(' OR ');
+                recommendQuery += keywordConditions + `)`;
+                params.push(...uniqueKeywords.map(kw => `%${kw}%`));
+            }
+            recommendQuery += `)`;
+        }
+
+        // 排序：分类匹配优先，然后是最新发布
+        recommendQuery += ` ORDER BY 
+            CASE WHEN i.category_id IN (${categoryIds.map(() => '?').join(',')}) THEN 0 ELSE 1 END,
+            i.created_at DESC
+            LIMIT ?`;
+        params.push(...categoryIds, parseInt(limit));
+
+        db.all(recommendQuery, params, (err, items) => {
+            if (err) {
+                console.error('查询推荐物品失败:', err);
+                return res.status(500).json(errorResponse(9999, '服务器错误'));
+            }
+
+            // 格式化数据
+            const formattedItems = items.map(item => ({
+                id: item.id,
+                title: item.title,
+                price: item.price,
+                priceDisplay: item.price ? `¥${item.price}` : '免费/面议',
+                condition: item.condition,
+                thumbnailUrl: item.thumbnail_url ? `/uploads/${item.thumbnail_url}` : '/images/placeholder.png',
+                user: {
+                    id: item.user_id,
+                    nickname: item.user_nickname,
+                    avatar: item.avatar || '/images/default-avatar.png'
+                },
+                category: {
+                    id: 1,
+                    name: item.category_name
+                },
+                status: item.status,
+                viewCount: item.view_count,
+                createdAt: formatDate(item.created_at)
+            }));
+
+            res.json(successResponse(formattedItems, '获取推荐成功'));
         });
     });
 });
