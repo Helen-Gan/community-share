@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>注册 - 社区闲置物品交换平台</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand">
+                <a href="/"><h1>🏠 社区闲置交换</h1></a>
+            </div>
+            <div class="nav-menu">
+                <a href="/">首页</a>
+                <a href="login.html">登录</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容 -->
+    <main class="main-content">
+        <div class="container">
+            <div class="auth-container">
+                <div class="auth-form">
+                    <h2>注册</h2>
+                    <form id="registerForm">
+                        <div class="form-group">
+                            <label>手机号</label>
+                            <input type="tel" id="phone" name="phone" placeholder="请输入手机号" required pattern="^1\d{10}$">
+                        </div>
+                        <div class="form-group">
+                            <label>昵称（可选）</label>
+                            <input type="text" id="nickname" name="nickname" placeholder="请输入昵称">
+                        </div>
+                        <div class="form-group">
+                            <label>密码</label>
+                            <input type="password" id="password" name="password" placeholder="请输入密码（至少6位）" required minlength="6">
+                        </div>
+                        <div class="form-group">
+                            <label>确认密码</label>
+                            <input type="password" id="confirmPassword" name="confirmPassword" placeholder="请再次输入密码" required>
+                        </div>
+                        <button type="submit" class="btn-primary btn-block">注册</button>
+                    </form>
+                    <div class="auth-footer">
+                        <p>已有账号？<a href="login.html">立即登录</a></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2024 社区闲置物品交换平台. 让闲置物品重新焕发生机.</p>
+        </div>
+    </footer>
+
+    <script src="js/app.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAuth();
+            
+            // 注册表单提交
+            document.getElementById('registerForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                const phone = document.getElementById('phone').value;
+                const nickname = document.getElementById('nickname').value;
+                const password = document.getElementById('password').value;
+                const confirmPassword = document.getElementById('confirmPassword').value;
+
+                // 验证密码
+                if (password !== confirmPassword) {
+                    showToast('两次输入的密码不一致', 'error');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/v1/auth/register', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone, password, nickname })
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        localStorage.setItem('token', result.data.token);
+                        localStorage.setItem('user', JSON.stringify(result.data.user));
+                        
+                        showToast('注册成功', 'success');
+                        
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 1000);
+                    } else {
+                        showToast(result.error.message, 'error');
+                    }
+                } catch (error) {
+                    console.error('注册失败:', error);
+                    showToast('注册失败，请重试', 'error');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

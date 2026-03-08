@@ -1,0 +1,10 @@
+# 图片目录
+
+请在此目录下放置以下图片文件：
+
+1. placeholder.png - 物品占位图（建议尺寸：400x400）
+2. default-avatar.png - 默认用户头像（建议尺寸：100x100）
+
+临时可以使用在线图片：
+- 占位图：https://via.placeholder.com/400x400?text=No+Image
+- 头像：https://via.placeholder.com/100x100?text=Avatar

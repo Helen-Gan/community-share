@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>物品详情 - 社区闲置物品交换平台</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand">
+                <a href="/"><h1>🏠 社区闲置交换</h1></a>
+            </div>
+            <div class="nav-menu">
+                <a href="/">首页</a>
+                <a href="myitems.html" class="nav-myitems" style="display: none;">我的物品</a>
+                <a href="publish.html" class="nav-publish" style="display: none;">发布物品</a>
+                <div class="nav-auth">
+                    <a href="login.html" class="nav-login">登录</a>
+                    <a href="register.html" class="nav-register">注册</a>
+                    <span class="nav-user" style="display: none;"></span>
+                    <a href="#" class="nav-logout" style="display: none;">退出</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容 -->
+    <main class="main-content">
+        <div class="container">
+            <div class="detail-container" id="detailContainer">
+                <div class="loading">加载中...</div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2024 社区闲置物品交换平台. 让闲置物品重新焕发生机.</p>
+        </div>
+    </footer>
+
+    <script src="js/app.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            checkAuth();
+            loadItemDetail();
+        });
+
+        async function loadItemDetail() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const itemId = urlParams.get('id');
+
+            if (!itemId) {
+                window.location.href = '/';
+                return;
+            }
+
+            const token = localStorage.getItem('token');
+
+            try {
+                const headers = { 'Content-Type': 'application/json' };
+                if (token) {
+                    headers['Authorization'] = `Bearer ${token}`;
+                }
+
+                const response = await fetch(`/api/v1/items/${itemId}`, { headers });
+                const result = await response.json();
+
+                if (result.success) {
+                    renderItemDetail(result.data);
+                } else {
+                    document.getElementById('detailContainer').innerHTML = `
+                        <div class="error-state">
+                            <p>${result.error.message}</p>
+                            <a href="/" class="btn-primary">返回首页</a>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('加载物品详情失败:', error);
+                document.getElementById('detailContainer').innerHTML = `
+                    <div class="error-state">
+                        <p>加载失败，请重试</p>
+                        <a href="/" class="btn-primary">返回首页</a>
+                    </div>
+                `;
+            }
+        }
+
+        function renderItemDetail(item) {
+            const container = document.getElementById('detailContainer');
+            
+            // 构建图片HTML
+            const imagesHtml = item.images && item.images.length > 0 
+                ? item.images.map((img, index) => `
+                    <div class="carousel-item ${index === 0 ? 'active' : ''}">
+                        <img src="${img.url}" alt="${item.title}" onclick="openImageViewer(${index})">
+                    </div>
+                `).join('')
+                : `<div class="carousel-item active"><img src="/images/placeholder.png" alt="${item.title}"></div>`;
+
+            // 构建联系方式HTML
+            let contactHtml = '';
+            if (item.contact.visible) {
+                contactHtml = `
+                    <div class="contact-info visible">
+                        <h3>联系方式</h3>
+                        <div class="contact-method">
+                            <span class="method-icon">${getContactIcon(item.contact.method)}</span>
+                            <span class="method-name">${item.contact.method}</span>
+                        </div>
+                        <div class="contact-value">${item.contact.value}</div>
+                        <button class="btn-outline" onclick="copyContact('${item.contact.value}')">复制联系方式</button>
+                    </div>
+                `;
+            } else {
+                const user = JSON.parse(localStorage.getItem('user') || '{}');
+                const isLoggedIn = localStorage.getItem('token');
+                
+                if (isLoggedIn && user.id === item.user.id) {
+                    contactHtml = `<div class="contact-info"><p>这是您发布的物品</p></div>`;
+                } else if (isLoggedIn) {
+                    contactHtml = `
+                        <div class="contact-info">
+                            <button class="btn-primary" onclick="contactPublisher(${item.id})">联系发布者</button>
+                        </div>
+                    `;
+                } else {
+                    contactHtml = `
+                        <div class="contact-info">
+                            <p>登录后查看联系方式</p>
+                            <a href="login.html" class="btn-primary">立即登录</a>
+                        </div>
+                    `;
+                }
+            }
+
+            container.innerHTML = `
+                <div class="breadcrumb">
+                    <a href="/">首页</a>
+                    <span>/</span>
+                    <span>${item.title}</span>
+                </div>
+
+                <div class="detail-content">
+                    <!-- 左侧：图片 -->
+                    <div class="detail-images">
+                        <div class="image-carousel">
+                            ${imagesHtml}
+                        </div>
+                        ${item.images && item.images.length > 1 ? `
+                            <div class="carousel-nav">
+                                <button class="carousel-btn prev" onclick="prevImage()">◀</button>
+                                <span class="carousel-indicator">1/${item.images.length}</span>
+                                <button class="carousel-btn next" onclick="nextImage()">▶</button>
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    <!-- 右侧：信息 -->
+                    <div class="detail-info">
+                        <h1 class="detail-title">${item.title}</h1>
+                        
+                        <div class="detail-meta">
+                            <span class="meta-price">${item.priceDisplay}</span>
+                            <span class="meta-condition">${item.condition}</span>
+                            <span class="meta-views">👁 ${item.viewCount}</span>
+                        </div>
+
+                        <div class="detail-category">
+                            <span>分类：</span>
+                            <span>${item.category.name}</span>
+                        </div>
+
+                        <div class="detail-description">
+                            <h3>物品描述</h3>
+                            <p>${item.description.replace(/\n/g, '<br>')}</p>
+                        </div>
+
+                        <div class="detail-user">
+                            <img src="${item.user.avatar}" alt="${item.user.nickname}">
+                            <div class="user-info">
+                                <div class="user-name">${item.user.nickname}</div>
+                                <div class="user-reputation">信誉值：${item.user.reputation}</div>
+                            </div>
+                        </div>
+
+                        <div class="detail-time">
+                            发布于 ${item.createdAt}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 联系方式区域 -->
+                <div class="detail-contact">
+                    ${contactHtml}
+                </div>
+            `;
+        }
+
+        function getContactIcon(method) {
+            const icons = {
+                '微信': '💬',
+                '手机号': '📱',
+                'QQ': '🐧'
+            };
+            return icons[method] || '📞';
+        }
+
+        async function contactPublisher(itemId) {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                showToast('请先登录', 'error');
+                window.location.href = 'login.html';
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/v1/items/${itemId}/contact`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ message: '我对这个物品感兴趣' })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast('联系成功！已显示完整联系方式', 'success');
+                    loadItemDetail(); // 重新加载以显示联系方式
+                } else {
+                    showToast(result.error.message, 'error');
+                }
+            } catch (error) {
+                console.error('联系失败:', error);
+                showToast('联系失败，请重试', 'error');
+            }
+        }
+
+        function copyContact(value) {
+            navigator.clipboard.writeText(value).then(() => {
+                showToast('已复制到剪贴板', 'success');
+            }).catch(() => {
+                showToast('复制失败', 'error');
+            });
+        }
+
+        // 图片轮播相关
+        let currentImageIndex = 0;
+        let itemImages = [];
+
+        function prevImage() {
+            if (currentImageIndex > 0) {
+                showImage(currentImageIndex - 1);
+            }
+        }
+
+        function nextImage() {
+            if (currentImageIndex < itemImages.length - 1) {
+                showImage(currentImageIndex + 1);
+            }
+        }
+
+        function showImage(index) {
+            const items = document.querySelectorAll('.carousel-item');
+            items.forEach((item, i) => {
+                item.classList.toggle('active', i === index);
+            });
+            currentImageIndex = index;
+            document.querySelector('.carousel-indicator').textContent = `${index + 1}/${itemImages.length}`;
+        }
+
+        function openImageViewer(index) {
+            // 简化版：在新标签页打开图片
+            const images = document.querySelectorAll('.carousel-item img');
+            if (images[index]) {
+                window.open(images[index].src, '_blank');
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+# 依赖
+node_modules/
+
+# 数据库
+database.db
+database.db-journal
+*.db
+*.db-shm
+*.db-wal
+
+# 上传文件
+uploads/
+!uploads/.gitkeep
+
+# 日志
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 临时文件
+*.tmp
+*.temp

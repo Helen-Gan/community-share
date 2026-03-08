@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>社区闲置物品交换平台</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand">
+                <h1>🏠 社区闲置交换</h1>
+            </div>
+            <div class="nav-menu">
+                <a href="/" class="active">首页</a>
+                <a href="myitems.html" class="nav-myitems" style="display: none;">我的物品</a>
+                <a href="publish.html" class="nav-publish" style="display: none;">发布物品</a>
+                <div class="nav-auth">
+                    <a href="login.html" class="nav-login">登录</a>
+                    <a href="register.html" class="nav-register">注册</a>
+                    <span class="nav-user" style="display: none;"></span>
+                    <a href="#" class="nav-logout" style="display: none;">退出</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容 -->
+    <main class="main-content">
+        <div class="container">
+            <!-- 搜索和筛选栏 -->
+            <div class="search-bar">
+                <div class="search-input">
+                    <input type="text" id="searchInput" placeholder="搜索物品...">
+                    <button class="search-btn">🔍</button>
+                </div>
+                <div class="category-filter">
+                    <button class="category-btn active" data-category="all">全部</button>
+                    <div id="categoryButtons"></div>
+                </div>
+                <div class="sort-filter">
+                    <select id="sortSelect">
+                        <option value="newest">最新发布</option>
+                        <option value="price_asc">价格从低到高</option>
+                        <option value="price_desc">价格从高到低</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- 物品列表 -->
+            <div class="items-grid" id="itemsGrid">
+                <!-- 物品卡片将通过JavaScript动态生成 -->
+            </div>
+
+            <!-- 加载更多 -->
+            <div class="load-more">
+                <button id="loadMoreBtn" class="btn-primary">加载更多</button>
+            </div>
+        </div>
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2024 社区闲置物品交换平台. 让闲置物品重新焕发生机.</p>
+        </div>
+    </footer>
+
+    <script src="js/app.js"></script>
+    <script>
+        // 初始化首页
+        document.addEventListener('DOMContentLoaded', async () => {
+            checkAuth();
+            loadCategories();
+            loadItems();
+
+            // 搜索防抖
+            let searchTimeout;
+            document.getElementById('searchInput').addEventListener('input', (e) => {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    loadItems(1);
+                }, 500);
+            });
+
+            // 分类筛选
+            document.getElementById('categoryButtons').addEventListener('click', (e) => {
+                if (e.target.classList.contains('category-btn')) {
+                    document.querySelectorAll('.category-btn').forEach(btn => btn.classList.remove('active'));
+                    e.target.classList.add('active');
+                    loadItems(1);
+                }
+            });
+
+            // 排序
+            document.getElementById('sortSelect').addEventListener('change', () => {
+                loadItems(1);
+            });
+
+            // 加载更多
+            document.getElementById('loadMoreBtn').addEventListener('click', () => {
+                const currentPage = parseInt(document.getElementById('loadMoreBtn').dataset.page) || 1;
+                loadItems(currentPage + 1, true);
+            });
+        });
+
+        let currentCategory = 'all';
+        let currentPage = 1;
+        let hasMore = true;
+
+        // 加载分类
+        async function loadCategories() {
+            try {
+                const response = await fetch('/api/v1/categories');
+                const result = await response.json();
+                
+                if (result.success) {
+                    const container = document.getElementById('categoryButtons');
+                    container.innerHTML = result.data.map(cat => `
+                        <button class="category-btn" data-category="${cat.id}">${cat.icon} ${cat.name}</button>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('加载分类失败:', error);
+            }
+        }
+
+        // 加载物品列表（修复版：兼容两种返回格式）
+        async function loadItems(page = 1, append = false) {
+            if (append && !hasMore) return;
+
+            const keyword = document.getElementById('searchInput').value.trim();
+            const sort = document.getElementById('sortSelect').value;
+            const activeCategory = document.querySelector('.category-btn.active');
+            const category = activeCategory ? activeCategory.dataset.category : 'all';
+
+            const params = new URLSearchParams({
+                page: page,
+                pageSize: 12,
+                sort: sort
+            });
+
+            if (category !== 'all') {
+                params.append('category', category);
+            }
+
+            if (keyword) {
+                params.append('keyword', keyword);
+            }
+
+            try {
+                const response = await fetch(`/api/v1/items?${params}`);
+                const result = await response.json();
+
+                if (result.success) {
+                    // ----- 兼容处理开始 -----
+                    let items = [];
+                    let pagination = { page: 1, totalPages: 1 };
+
+                    if (Array.isArray(result.data)) {
+                        // 格式1：直接返回数组（无分页信息）
+                        items = result.data;
+                        pagination = result.pagination || { page: page, totalPages: Math.ceil(items.length / 12) };
+                    } else if (result.data && Array.isArray(result.data.items)) {
+                        // 格式2：返回带分页的对象（如 { items: [...], pagination: {...} }）
+                        items = result.data.items;
+                        pagination = result.data.pagination || { page: page, totalPages: 1 };
+                    } else {
+                        console.error('未知的数据格式:', result.data);
+                        items = [];
+                    }
+                    // ----- 兼容处理结束 -----
+
+                    const container = document.getElementById('itemsGrid');
+
+                    if (!append) {
+                        container.innerHTML = '';
+                    }
+
+                    if (items.length === 0 && !append) {
+                        container.innerHTML = `
+                            <div class="empty-state">
+                                <p>暂无物品</p>
+                                <p>快来发布第一个物品吧！</p>
+                            </div>
+                        `;
+                        document.getElementById('loadMoreBtn').style.display = 'none';
+                        return;
+                    }
+
+                    container.innerHTML += items.map(item => `
+                        <div class="item-card" onclick="window.location.href='detail.html?id=${item.id}'">
+                            <div class="item-image">
+                                <img src="${item.thumbnailUrl}" alt="${item.title}" loading="lazy">
+                            </div>
+                            <div class="item-info">
+                                <h3 class="item-title">${item.title}</h3>
+                                <div class="item-meta">
+                                    <span class="item-condition">${item.condition}</span>
+                                    <span class="item-time">${item.createdAt}</span>
+                                </div>
+                                <div class="item-price">${item.priceDisplay}</div>
+                                <div class="item-user">
+                                    <img src="${item.user.avatar}" alt="${item.user.nickname}">
+                                    <span>${item.user.nickname}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+
+                    // 更新分页状态（使用兼容后的 pagination）
+                    hasMore = pagination.page < pagination.totalPages;
+                    document.getElementById('loadMoreBtn').dataset.page = page;
+                    document.getElementById('loadMoreBtn').style.display = hasMore ? 'block' : 'none';
+                }
+            } catch (error) {
+                console.error('加载物品失败:', error);
+                // 如果 showToast 未定义，可暂时用 alert 替代，或注释掉
+                if (typeof showToast === 'function') {
+                    showToast('加载失败，请重试', 'error');
+                } else {
+                    alert('加载失败，请重试');
+                }
+            }
+        }
+    </script>
+</body>
+</html>
