@@ -96,7 +96,7 @@ function initDatabase() {
         // 分类表
         db.run(`CREATE TABLE IF NOT EXISTS categories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
+            name TEXT NOT NULL UNIQUE,
             icon TEXT DEFAULT '',
             sort_order INTEGER DEFAULT 0
         )`, (err) => {
@@ -164,6 +164,70 @@ function initDatabase() {
             UNIQUE(user_id, item_id)
         )`, (err) => {
             if (err) console.error('创建 user_views 表失败:', err.message);
+        });
+
+        // 交易记录表
+        db.run(`CREATE TABLE IF NOT EXISTS transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id INTEGER NOT NULL,
+            buyer_id INTEGER NOT NULL,
+            seller_id INTEGER NOT NULL,
+            status TEXT DEFAULT 'pending',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
+            FOREIGN KEY (buyer_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(item_id, buyer_id)
+        )`, (err) => {
+            if (err) console.error('创建 transactions 表失败:', err.message);
+        });
+
+        // 会话表（私信功能）
+        db.run(`CREATE TABLE IF NOT EXISTS conversations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user1_id INTEGER NOT NULL,
+            user2_id INTEGER NOT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user1_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (user2_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(user1_id, user2_id)
+        )`, (err) => {
+            if (err) console.error('创建 conversations 表失败:', err.message);
+        });
+
+        // 消息表
+        db.run(`CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id INTEGER NOT NULL,
+            sender_id INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            is_read INTEGER DEFAULT 0,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+            FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
+        )`, (err) => {
+            if (err) console.error('创建 messages 表失败:', err.message);
+        });
+
+        // 手机号申请表
+        db.run(`CREATE TABLE IF NOT EXISTS phone_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            requester_id INTEGER NOT NULL,
+            target_id INTEGER NOT NULL,
+            status TEXT DEFAULT 'pending',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (requester_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (target_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(requester_id, target_id)
+        )`, (err) => {
+            if (err) console.error('创建 phone_requests 表失败:', err.message);
+        });
+
+        // 为用户表添加bio字段（如果不存在）
+        db.run(`ALTER TABLE users ADD COLUMN bio TEXT DEFAULT ''`, (err) => {
+            // 忽略错误（字段已存在）
         });
 
         // 初始化分类数据（确保表已创建）
@@ -465,7 +529,7 @@ app.get('/api/v1/items', (req, res) => {
         FROM items i
         JOIN categories c ON i.category_id = c.id
         JOIN users u ON i.user_id = u.id
-        WHERE i.status = 'available'
+        WHERE (i.status = 'available' OR i.status IS NULL)
     `;
 
     const params = [];
@@ -496,11 +560,17 @@ app.get('/api/v1/items', (req, res) => {
 
     db.all(query, params, (err, items) => {
         if (err) {
+            console.error('[首页] 查询物品失败:', err);
             return res.status(500).json(errorResponse(9999, '服务器错误'));
         }
 
+        console.log(`[首页] 查询到物品数量: ${items.length}`);
+        if (items.length > 0) {
+            console.log(`[首页] 第一个物品: ID=${items[0].id}, title=${items[0].title}, status=${items[0].status}`);
+        }
+
         // 获取总数
-        let countQuery = 'SELECT COUNT(*) as total FROM items i WHERE i.status = "available"';
+        let countQuery = 'SELECT COUNT(*) as total FROM items i WHERE (i.status = "available" OR i.status IS NULL)';
         const countParams = [];
 
         if (category) {
@@ -628,7 +698,7 @@ app.get('/api/v1/items/recommendations', authenticateToken, (req, res) => {
             FROM items i
             JOIN categories c ON i.category_id = c.id
             JOIN users u ON i.user_id = u.id
-            WHERE i.status = 'available'
+            WHERE (i.status = 'available' OR i.status IS NULL)
             AND i.user_id != ?
             AND i.id NOT IN (
                 SELECT item_id FROM user_views WHERE user_id = ?
@@ -792,8 +862,8 @@ app.post('/api/v1/items', authenticateToken, upload.array('images', 5), (req, re
 
         // 创建物品
         db.run(
-            `INSERT INTO items (user_id, title, category_id, description, price, condition, contact_method, contact_value, contact_visibility)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO items (user_id, title, category_id, description, price, condition, contact_method, contact_value, contact_visibility, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 req.user.id,
                 title,
@@ -803,7 +873,8 @@ app.post('/api/v1/items', authenticateToken, upload.array('images', 5), (req, re
                 condition,
                 contactMethod,
                 contactValue,
-                contactVisibility || 'login_required'
+                contactVisibility || 'login_required',
+                'available'
             ],
             function(err) {
                 if (err) {
@@ -826,7 +897,7 @@ app.post('/api/v1/items', authenticateToken, upload.array('images', 5), (req, re
                 res.json(successResponse({
                     id: this.lastID,
                     title,
-                    url: `/detail.html?id=${this.lastID}`
+                    url: `/profile.html?id=${req.user.id}`
                 }, '物品发布成功'));
             }
         );
@@ -1091,6 +1162,909 @@ app.put('/api/v1/contacts/:id/status', authenticateToken, (req, res) => {
                 }
 
                 res.json(successResponse({ id, status }, '状态更新成功'));
+            }
+        );
+    });
+});
+
+// ==================== 交易接口 ====================
+
+// 发起交易请求
+app.post('/api/v1/transactions', authenticateToken, (req, res) => {
+    const { itemId } = req.body;
+    const buyerId = req.user.id;
+
+    if (!itemId) {
+        return res.status(400).json(errorResponse(1002, '请提供物品ID'));
+    }
+
+    // 查询物品信息
+    db.get(`
+        SELECT i.*, u.id as seller_id, u.nickname as seller_nickname 
+        FROM items i 
+        JOIN users u ON i.user_id = u.id 
+        WHERE i.id = ?
+    `, [itemId], (err, item) => {
+        if (err) {
+            console.error('查询物品错误:', err);
+            return res.status(500).json(errorResponse(9999, '服务器错误'));
+        }
+
+        if (!item) {
+            return res.status(404).json(errorResponse(3001, '物品不存在'));
+        }
+
+        // 检查物品状态
+        if (item.status !== 'available' && item.status !== null) {
+            return res.status(400).json(errorResponse(1001, '该物品暂不可交易'));
+        }
+
+        // 不能交易自己的物品
+        if (item.seller_id === buyerId) {
+            return res.status(400).json(errorResponse(1001, '不能交易自己的物品'));
+        }
+
+        // 检查是否已存在待处理的交易请求
+        db.get(
+            'SELECT * FROM transactions WHERE item_id = ? AND buyer_id = ? AND status = "pending"',
+            [itemId, buyerId],
+            (err, existing) => {
+                if (err) {
+                    return res.status(500).json(errorResponse(9999, '服务器错误'));
+                }
+
+                if (existing) {
+                    return res.status(400).json(errorResponse(1001, '您已发起过交易请求，请等待卖家处理'));
+                }
+
+                // 创建交易记录
+                db.run(
+                    `INSERT INTO transactions (item_id, buyer_id, seller_id, status) 
+                     VALUES (?, ?, ?, 'pending')`,
+                    [itemId, buyerId, item.seller_id],
+                    function(err) {
+                        if (err) {
+                            console.error('创建交易记录错误:', err);
+                            return res.status(500).json(errorResponse(9999, '发起交易失败'));
+                        }
+
+                        res.json(successResponse({
+                            id: this.lastID,
+                            itemId: itemId,
+                            status: 'pending',
+                            seller: {
+                                id: item.seller_id,
+                                nickname: item.seller_nickname
+                            }
+                        }, '交易请求已发送，请等待卖家处理'));
+                    }
+                );
+            }
+        );
+    });
+});
+
+// 获取交易列表
+app.get('/api/v1/transactions', authenticateToken, (req, res) => {
+    const { page = 1, pageSize = 10, status = 'all', type = 'all' } = req.query;
+    const offset = (page - 1) * pageSize;
+    const userId = req.user.id;
+
+    let query = `
+        SELECT 
+            t.id, t.item_id, t.buyer_id, t.seller_id, t.status, t.created_at, t.updated_at,
+            i.title as item_title, i.price as item_price, i.condition as item_condition,
+            (SELECT image_url FROM item_images WHERE item_id = i.id ORDER BY sort_order LIMIT 1) as item_thumbnail,
+            u_buyer.id as buyer_id, u_buyer.nickname as buyer_nickname, u_buyer.avatar as buyer_avatar,
+            u_seller.id as seller_id, u_seller.nickname as seller_nickname, u_seller.avatar as seller_avatar
+        FROM transactions t
+        JOIN items i ON t.item_id = i.id
+        JOIN users u_buyer ON t.buyer_id = u_buyer.id
+        JOIN users u_seller ON t.seller_id = u_seller.id
+        WHERE 1=1
+    `;
+
+    const params = [];
+
+    // 类型筛选：作为买家或卖家
+    if (type === 'buyer') {
+        query += ' AND t.buyer_id = ?';
+        params.push(userId);
+    } else if (type === 'seller') {
+        query += ' AND t.seller_id = ?';
+        params.push(userId);
+    } else {
+        // 全部：包括作为买家和卖家的交易
+        query += ' AND (t.buyer_id = ? OR t.seller_id = ?)';
+        params.push(userId, userId);
+    }
+
+    // 状态筛选
+    if (status !== 'all') {
+        query += ' AND t.status = ?';
+        params.push(status);
+    }
+
+    query += ' ORDER BY t.updated_at DESC LIMIT ? OFFSET ?';
+    params.push(parseInt(pageSize), offset);
+
+    db.all(query, params, (err, transactions) => {
+        if (err) {
+            console.error('查询交易列表错误:', err);
+            return res.status(500).json(errorResponse(9999, '服务器错误'));
+        }
+
+        // 获取总数
+        let countQuery = 'SELECT COUNT(*) as total FROM transactions t WHERE 1=1';
+        const countParams = [];
+
+        if (type === 'buyer') {
+            countQuery += ' AND t.buyer_id = ?';
+            countParams.push(userId);
+        } else if (type === 'seller') {
+            countQuery += ' AND t.seller_id = ?';
+            countParams.push(userId);
+        } else {
+            countQuery += ' AND (t.buyer_id = ? OR t.seller_id = ?)';
+            countParams.push(userId, userId);
+        }
+
+        if (status !== 'all') {
+            countQuery += ' AND t.status = ?';
+            countParams.push(status);
+        }
+
+        db.get(countQuery, countParams, (err, countResult) => {
+            if (err) {
+                return res.status(500).json(errorResponse(9999, '服务器错误'));
+            }
+
+            const formattedTransactions = transactions.map(t => ({
+                id: t.id,
+                item: {
+                    id: t.item_id,
+                    title: t.item_title,
+                    price: t.item_price,
+                    condition: t.item_condition,
+                    thumbnailUrl: t.item_thumbnail ? `/uploads/${t.item_thumbnail}` : '/images/placeholder.png'
+                },
+                buyer: {
+                    id: t.buyer_id,
+                    nickname: t.buyer_nickname,
+                    avatar: t.buyer_avatar || '/images/default-avatar.png'
+                },
+                seller: {
+                    id: t.seller_id,
+                    nickname: t.seller_nickname,
+                    avatar: t.seller_avatar || '/images/default-avatar.png'
+                },
+                status: t.status,
+                createdAt: formatDate(t.created_at),
+                updatedAt: formatDate(t.updated_at),
+                isBuyer: t.buyer_id === userId,
+                isSeller: t.seller_id === userId
+            }));
+
+            res.json(successResponse(formattedTransactions, '获取成功', {
+                pagination: {
+                    page: parseInt(page),
+                    pageSize: parseInt(pageSize),
+                    total: countResult.total
+                }
+            }));
+        });
+    });
+});
+
+// 获取交易详情
+app.get('/api/v1/transactions/:id', authenticateToken, (req, res) => {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    db.get(`
+        SELECT 
+            t.*,
+            i.title as item_title, i.price as item_price, i.condition as item_condition, i.description as item_description,
+            i.contact_method as item_contact_method, i.contact_value as item_contact_value,
+            (SELECT image_url FROM item_images WHERE item_id = i.id ORDER BY sort_order LIMIT 1) as item_thumbnail,
+            u_buyer.nickname as buyer_nickname, u_buyer.avatar as buyer_avatar, u_buyer.phone as buyer_phone,
+            u_seller.nickname as seller_nickname, u_seller.avatar as seller_avatar, u_seller.phone as seller_phone
+        FROM transactions t
+        JOIN items i ON t.item_id = i.id
+        JOIN users u_buyer ON t.buyer_id = u_buyer.id
+        JOIN users u_seller ON t.seller_id = u_seller.id
+        WHERE t.id = ?
+    `, [id], (err, transaction) => {
+        if (err) {
+            console.error('查询交易详情错误:', err);
+            return res.status(500).json(errorResponse(9999, '服务器错误'));
+        }
+
+        if (!transaction) {
+            return res.status(404).json(errorResponse(3001, '交易记录不存在'));
+        }
+
+        // 验证权限
+        if (transaction.buyer_id !== userId && transaction.seller_id !== userId) {
+            return res.status(403).json(errorResponse(3003, '无权查看此交易'));
+        }
+
+        const isBuyer = transaction.buyer_id === userId;
+        const isSeller = transaction.seller_id === userId;
+
+        // 只有当交易已接受或已完成时才显示联系方式
+        const showContact = transaction.status === 'accepted' || transaction.status === 'completed';
+
+        res.json(successResponse({
+            id: transaction.id,
+            item: {
+                id: transaction.item_id,
+                title: transaction.item_title,
+                price: transaction.item_price,
+                condition: transaction.item_condition,
+                description: transaction.item_description,
+                thumbnailUrl: transaction.item_thumbnail ? `/uploads/${transaction.item_thumbnail}` : '/images/placeholder.png'
+            },
+            buyer: {
+                id: transaction.buyer_id,
+                nickname: transaction.buyer_nickname,
+                avatar: transaction.buyer_avatar || '/images/default-avatar.png',
+                phone: showContact ? transaction.buyer_phone : null
+            },
+            seller: {
+                id: transaction.seller_id,
+                nickname: transaction.seller_nickname,
+                avatar: transaction.seller_avatar || '/images/default-avatar.png',
+                phone: showContact ? transaction.seller_phone : null,
+                contactMethod: showContact ? transaction.item_contact_method : null,
+                contactValue: showContact ? transaction.item_contact_value : null
+            },
+            status: transaction.status,
+            createdAt: formatDate(transaction.created_at),
+            updatedAt: formatDate(transaction.updated_at),
+            isBuyer: isBuyer,
+            isSeller: isSeller
+        }));
+    });
+});
+
+// 卖家处理交易请求（接受/拒绝）
+app.put('/api/v1/transactions/:id/handle', authenticateToken, (req, res) => {
+    const { id } = req.params;
+    const { action } = req.body; // 'accept' 或 'reject'
+    const sellerId = req.user.id;
+
+    if (!action || !['accept', 'reject'].includes(action)) {
+        return res.status(400).json(errorResponse(1002, '请提供有效的操作类型（accept/reject）'));
+    }
+
+    // 查询交易记录
+    db.get('SELECT * FROM transactions WHERE id = ?', [id], (err, transaction) => {
+        if (err) {
+            return res.status(500).json(errorResponse(9999, '服务器错误'));
+        }
+
+        if (!transaction) {
+            return res.status(404).json(errorResponse(3001, '交易记录不存在'));
+        }
+
+        // 验证是否为卖家
+        if (transaction.seller_id !== sellerId) {
+            return res.status(403).json(errorResponse(3003, '无权处理此交易请求'));
+        }
+
+        // 验证状态
+        if (transaction.status !== 'pending') {
+            return res.status(400).json(errorResponse(1001, '该交易请求已处理'));
+        }
+
+        const newStatus = action === 'accept' ? 'accepted' : 'rejected';
+        const itemStatus = action === 'accept' ? 'reserved' : 'available';
+
+        // 更新交易状态
+        db.run(
+            'UPDATE transactions SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+            [newStatus, id],
+            (err) => {
+                if (err) {
+                    return res.status(500).json(errorResponse(9999, '处理失败'));
+                }
+
+                // 更新物品状态
+                db.run(
+                    'UPDATE items SET status = ? WHERE id = ?',
+                    [itemStatus, transaction.item_id],
+                    (err) => {
+                        if (err) {
+                            console.error('更新物品状态错误:', err);
+                        }
+
+                        const message = action === 'accept' 
+                            ? '已接受交易请求，物品已预留' 
+                            : '已拒绝交易请求';
+
+                        res.json(successResponse({ id, status: newStatus }, message));
+                    }
+                );
+            }
+        );
+    });
+});
+
+// 完成/取消交易
+app.put('/api/v1/transactions/:id/complete', authenticateToken, (req, res) => {
+    const { id } = req.params;
+    const { action } = req.body; // 'complete' 或 'cancel'
+    const userId = req.user.id;
+
+    if (!action || !['complete', 'cancel'].includes(action)) {
+        return res.status(400).json(errorResponse(1002, '请提供有效的操作类型（complete/cancel）'));
+    }
+
+    // 查询交易记录
+    db.get('SELECT * FROM transactions WHERE id = ?', [id], (err, transaction) => {
+        if (err) {
+            return res.status(500).json(errorResponse(9999, '服务器错误'));
+        }
+
+        if (!transaction) {
+            return res.status(404).json(errorResponse(3001, '交易记录不存在'));
+        }
+
+        // 验证权限（买家或卖家都可以操作）
+        if (transaction.buyer_id !== userId && transaction.seller_id !== userId) {
+            return res.status(403).json(errorResponse(3003, '无权操作此交易'));
+        }
+
+        // 验证当前状态
+        if (transaction.status !== 'accepted' && transaction.status !== 'pending') {
+            return res.status(400).json(errorResponse(1001, '该交易状态不允许此操作'));
+        }
+
+        const newStatus = action === 'complete' ? 'completed' : 'cancelled';
+        const itemStatus = action === 'complete' ? 'traded' : 'available';
+
+        // 更新交易状态
+        db.run(
+            'UPDATE transactions SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+            [newStatus, id],
+            (err) => {
+                if (err) {
+                    return res.status(500).json(errorResponse(9999, '操作失败'));
+                }
+
+                // 更新物品状态
+                db.run(
+                    'UPDATE items SET status = ? WHERE id = ?',
+                    [itemStatus, transaction.item_id],
+                    (err) => {
+                        if (err) {
+                            console.error('更新物品状态错误:', err);
+                        }
+
+                        const message = action === 'complete' 
+                            ? '交易已完成' 
+                            : '交易已取消';
+
+                        res.json(successResponse({ id, status: newStatus }, message));
+                    }
+                );
+            }
+        );
+    });
+});
+
+// ==================== 用户与社交接口 ====================
+
+// 获取用户公开信息（含物品列表）
+app.get('/api/v1/users/:id', (req, res) => {
+    const { id } = req.params;
+    const currentUserId = req.user ? req.user.id : null;
+
+    // 查询用户信息
+    db.get('SELECT id, nickname, avatar, reputation, bio, created_at FROM users WHERE id = ?', [id], (err, user) => {
+        if (err) {
+            return res.status(500).json(errorResponse(9999, '服务器错误'));
+        }
+        if (!user) {
+            return res.status(404).json(errorResponse(3001, '用户不存在'));
+        }
+
+        // 查询用户发布的物品
+        db.all(`
+            SELECT i.id, i.title, i.price, i.condition, i.status, i.created_at,
+                (SELECT image_url FROM item_images WHERE item_id = i.id ORDER BY sort_order LIMIT 1) as thumbnail_url
+            FROM items i
+            WHERE i.user_id = ? AND (i.status != 'deleted' OR i.status IS NULL)
+            ORDER BY i.created_at DESC
+            LIMIT 20
+        `, [id], (err, items) => {
+            if (err) {
+                return res.status(500).json(errorResponse(9999, '服务器错误'));
+            }
+
+            const formattedItems = items.map(item => ({
+                id: item.id,
+                title: item.title,
+                price: item.price,
+                priceDisplay: item.price ? `¥${item.price}` : '免费/面议',
+                condition: item.condition,
+                status: item.status || 'available',
+                thumbnailUrl: item.thumbnail_url ? `/uploads/${item.thumbnail_url}` : '/images/placeholder.png',
+                createdAt: formatDate(item.created_at)
+            }));
+
+            res.json(successResponse({
+                user: {
+                    id: user.id,
+                    nickname: user.nickname,
+                    avatar: user.avatar || '/images/default-avatar.png',
+                    reputation: user.reputation,
+                    bio: user.bio || '',
+                    createdAt: formatDate(user.created_at),
+                    isSelf: currentUserId === user.id
+                },
+                items: formattedItems
+            }));
+        });
+    });
+});
+
+// 获取用户发布的物品列表（支持分页）
+app.get('/api/v1/users/:id/items', (req, res) => {
+    const { id } = req.params;
+    const { page = 1, pageSize = 12 } = req.query;
+    const offset = (page - 1) * pageSize;
+
+    // 查询用户信息
+    db.get('SELECT id, nickname FROM users WHERE id = ?', [id], (err, user) => {
+        if (err) {
+            return res.status(500).json(errorResponse(9999, '服务器错误'));
+        }
+        if (!user) {
+            return res.status(404).json(errorResponse(3001, '用户不存在'));
+        }
+
+        // 查询物品总数
+        db.get(`
+            SELECT COUNT(*) as total FROM items 
+            WHERE user_id = ? AND (status != 'deleted' OR status IS NULL)
+        `, [id], (err, countResult) => {
+            if (err) {
+                return res.status(500).json(errorResponse(9999, '服务器错误'));
+            }
+
+            // 查询物品列表
+            db.all(`
+                SELECT i.id, i.title, i.price, i.condition, i.status, i.view_count, i.created_at,
+                    (SELECT image_url FROM item_images WHERE item_id = i.id ORDER BY sort_order LIMIT 1) as thumbnail_url
+                FROM items i
+                WHERE i.user_id = ? AND (i.status != 'deleted' OR i.status IS NULL)
+                ORDER BY i.created_at DESC
+                LIMIT ? OFFSET ?
+            `, [id, parseInt(pageSize), offset], (err, items) => {
+                if (err) {
+                    return res.status(500).json(errorResponse(9999, '服务器错误'));
+                }
+
+                const formattedItems = items.map(item => ({
+                    id: item.id,
+                    title: item.title,
+                    price: item.price,
+                    priceDisplay: item.price ? `¥${item.price}` : '免费/面议',
+                    condition: item.condition,
+                    status: item.status || 'available',
+                    viewCount: item.view_count,
+                    thumbnailUrl: item.thumbnail_url ? `/uploads/${item.thumbnail_url}` : '/images/placeholder.png',
+                    createdAt: formatDate(item.created_at)
+                }));
+
+                res.json(successResponse({
+                    items: formattedItems,
+                    pagination: {
+                        page: parseInt(page),
+                        pageSize: parseInt(pageSize),
+                        total: countResult.total,
+                        totalPages: Math.ceil(countResult.total / pageSize)
+                    }
+                }));
+            });
+        });
+    });
+});
+
+// 更新个人资料
+app.put('/api/v1/users/:id', authenticateToken, (req, res) => {
+    const { id } = req.params;
+    const { nickname, bio } = req.body;
+    const currentUserId = req.user.id;
+
+    // 只能修改自己的资料
+    if (parseInt(id) !== currentUserId) {
+        return res.status(403).json(errorResponse(3003, '无权修改他人资料'));
+    }
+
+    // 验证参数
+    if (!nickname || nickname.trim().length === 0) {
+        return res.status(400).json(errorResponse(1002, '昵称不能为空'));
+    }
+
+    if (nickname.length > 20) {
+        return res.status(400).json(errorResponse(1002, '昵称不能超过20个字符'));
+    }
+
+    db.run(
+        'UPDATE users SET nickname = ?, bio = ? WHERE id = ?',
+        [nickname.trim(), bio || '', currentUserId],
+        function(err) {
+            if (err) {
+                return res.status(500).json(errorResponse(9999, '更新失败'));
+            }
+
+            res.json(successResponse({
+                id: currentUserId,
+                nickname: nickname.trim(),
+                bio: bio || ''
+            }, '资料更新成功'));
+        }
+    );
+});
+
+// 上传头像
+app.post('/api/v1/upload/avatar', authenticateToken, upload.single('avatar'), (req, res) => {
+    if (!req.file) {
+        return res.status(400).json(errorResponse(1002, '请选择要上传的图片'));
+    }
+
+    const avatarUrl = `/uploads/${req.file.filename}`;
+
+    // 更新用户头像
+    db.run(
+        'UPDATE users SET avatar = ? WHERE id = ?',
+        [avatarUrl, req.user.id],
+        (err) => {
+            if (err) {
+                return res.status(500).json(errorResponse(9999, '头像更新失败'));
+            }
+
+            res.json(successResponse({ url: avatarUrl }, '头像上传成功'));
+        }
+    );
+});
+
+// 获取会话列表
+app.get('/api/v1/conversations', authenticateToken, (req, res) => {
+    const userId = req.user.id;
+
+    db.all(`
+        SELECT 
+            c.id, c.user1_id, c.user2_id, c.updated_at,
+            CASE WHEN c.user1_id = ? THEN c.user2_id ELSE c.user1_id END as other_user_id,
+            u.nickname as other_nickname, u.avatar as other_avatar,
+            (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message,
+            (SELECT created_at FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message_time,
+            (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id AND sender_id != ? AND is_read = 0) as unread_count
+        FROM conversations c
+        JOIN users u ON u.id = CASE WHEN c.user1_id = ? THEN c.user2_id ELSE c.user1_id END
+        WHERE c.user1_id = ? OR c.user2_id = ?
+        ORDER BY c.updated_at DESC
+    `, [userId, userId, userId, userId, userId], (err, conversations) => {
+        if (err) {
+            console.error('查询会话错误:', err);
+            return res.status(500).json(errorResponse(9999, '服务器错误'));
+        }
+
+        const formattedConversations = conversations.map(c => ({
+            id: c.id,
+            otherUser: {
+                id: c.other_user_id,
+                nickname: c.other_nickname,
+                avatar: c.other_avatar || '/images/default-avatar.png'
+            },
+            lastMessage: c.last_message || '',
+            lastMessageTime: c.last_message_time ? formatDate(c.last_message_time) : '',
+            unreadCount: c.unread_count
+        }));
+
+        res.json(successResponse(formattedConversations));
+    });
+});
+
+// 获取或创建会话
+app.post('/api/v1/conversations', authenticateToken, (req, res) => {
+    const { userId: otherUserId } = req.body;
+    const currentUserId = req.user.id;
+
+    if (!otherUserId) {
+        return res.status(400).json(errorResponse(1002, '请提供对方用户ID'));
+    }
+
+    if (parseInt(otherUserId) === currentUserId) {
+        return res.status(400).json(errorResponse(1001, '不能与自己创建会话'));
+    }
+
+    // 确保user1_id < user2_id
+    const user1Id = Math.min(currentUserId, parseInt(otherUserId));
+    const user2Id = Math.max(currentUserId, parseInt(otherUserId));
+
+    // 检查是否已存在会话
+    db.get(
+        'SELECT * FROM conversations WHERE user1_id = ? AND user2_id = ?',
+        [user1Id, user2Id],
+        (err, conversation) => {
+            if (err) {
+                return res.status(500).json(errorResponse(9999, '服务器错误'));
+            }
+
+            if (conversation) {
+                return res.json(successResponse({ id: conversation.id }, '会话已存在'));
+            }
+
+            // 创建新会话
+            db.run(
+                'INSERT INTO conversations (user1_id, user2_id) VALUES (?, ?)',
+                [user1Id, user2Id],
+                function(err) {
+                    if (err) {
+                        return res.status(500).json(errorResponse(9999, '创建会话失败'));
+                    }
+
+                    res.json(successResponse({ id: this.lastID }, '会话创建成功'));
+                }
+            );
+        }
+    );
+});
+
+// 获取会话消息
+app.get('/api/v1/conversations/:id/messages', authenticateToken, (req, res) => {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const { page = 1, pageSize = 20 } = req.query;
+    const offset = (page - 1) * pageSize;
+
+    // 验证用户是否属于该会话
+    db.get('SELECT * FROM conversations WHERE id = ? AND (user1_id = ? OR user2_id = ?)', 
+        [id, userId, userId], 
+        (err, conversation) => {
+            if (err) {
+                return res.status(500).json(errorResponse(9999, '服务器错误'));
+            }
+
+            if (!conversation) {
+                return res.status(403).json(errorResponse(3003, '无权查看此会话'));
+            }
+
+            // 查询消息
+            db.all(`
+                SELECT m.*, u.nickname as sender_nickname, u.avatar as sender_avatar
+                FROM messages m
+                JOIN users u ON m.sender_id = u.id
+                WHERE m.conversation_id = ?
+                ORDER BY m.created_at DESC
+                LIMIT ? OFFSET ?
+            `, [id, parseInt(pageSize), offset], (err, messages) => {
+                if (err) {
+                    return res.status(500).json(errorResponse(9999, '服务器错误'));
+                }
+
+                // 标记消息为已读
+                db.run(
+                    'UPDATE messages SET is_read = 1 WHERE conversation_id = ? AND sender_id != ? AND is_read = 0',
+                    [id, userId]
+                );
+
+                const formattedMessages = messages.reverse().map(m => ({
+                    id: m.id,
+                    content: m.content,
+                    sender: {
+                        id: m.sender_id,
+                        nickname: m.sender_nickname,
+                        avatar: m.sender_avatar || '/images/default-avatar.png'
+                    },
+                    isSelf: m.sender_id === userId,
+                    createdAt: formatDate(m.created_at),
+                    isRead: m.is_read === 1
+                }));
+
+                res.json(successResponse(formattedMessages));
+            });
+        }
+    );
+});
+
+// 发送消息
+app.post('/api/v1/conversations/:id/messages', authenticateToken, (req, res) => {
+    const { id } = req.params;
+    const { content } = req.body;
+    const senderId = req.user.id;
+
+    if (!content || content.trim().length === 0) {
+        return res.status(400).json(errorResponse(1002, '消息内容不能为空'));
+    }
+
+    // 验证用户是否属于该会话
+    db.get('SELECT * FROM conversations WHERE id = ? AND (user1_id = ? OR user2_id = ?)', 
+        [id, senderId, senderId], 
+        (err, conversation) => {
+            if (err) {
+                return res.status(500).json(errorResponse(9999, '服务器错误'));
+            }
+
+            if (!conversation) {
+                return res.status(403).json(errorResponse(3003, '无权发送消息'));
+            }
+
+            // 插入消息
+            db.run(
+                'INSERT INTO messages (conversation_id, sender_id, content) VALUES (?, ?, ?)',
+                [id, senderId, content.trim()],
+                function(err) {
+                    if (err) {
+                        return res.status(500).json(errorResponse(9999, '发送失败'));
+                    }
+
+                    // 更新会话时间
+                    db.run('UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', [id]);
+
+                    res.json(successResponse({
+                        id: this.lastID,
+                        content: content.trim(),
+                        createdAt: formatDate(new Date())
+                    }, '发送成功'));
+                }
+            );
+        }
+    );
+});
+
+// 申请查看手机号
+app.post('/api/v1/phone-requests', authenticateToken, (req, res) => {
+    const { targetId } = req.body;
+    const requesterId = req.user.id;
+
+    if (!targetId) {
+        return res.status(400).json(errorResponse(1002, '请提供目标用户ID'));
+    }
+
+    if (parseInt(targetId) === requesterId) {
+        return res.status(400).json(errorResponse(1001, '不能向自己申请'));
+    }
+
+    // 检查目标用户是否存在
+    db.get('SELECT id FROM users WHERE id = ?', [targetId], (err, user) => {
+        if (err || !user) {
+            return res.status(404).json(errorResponse(3001, '目标用户不存在'));
+        }
+
+        // 检查是否已存在申请
+        db.get(
+            'SELECT * FROM phone_requests WHERE requester_id = ? AND target_id = ?',
+            [requesterId, targetId],
+            (err, existing) => {
+                if (err) {
+                    return res.status(500).json(errorResponse(9999, '服务器错误'));
+                }
+
+                if (existing) {
+                    if (existing.status === 'pending') {
+                        return res.status(400).json(errorResponse(1001, '您已发送过申请，请等待对方处理'));
+                    } else if (existing.status === 'accepted') {
+                        return res.status(400).json(errorResponse(1001, '对方已同意您的申请'));
+                    }
+                }
+
+                // 创建申请
+                db.run(
+                    'INSERT INTO phone_requests (requester_id, target_id) VALUES (?, ?)',
+                    [requesterId, targetId],
+                    function(err) {
+                        if (err) {
+                            return res.status(500).json(errorResponse(9999, '申请失败'));
+                        }
+
+                        res.json(successResponse({ id: this.lastID }, '申请已发送，请等待对方同意'));
+                    }
+                );
+            }
+        );
+    });
+});
+
+// 获取手机号申请列表
+app.get('/api/v1/phone-requests', authenticateToken, (req, res) => {
+    const userId = req.user.id;
+    const { type = 'all' } = req.query; // all, sent, received
+
+    let query = `
+        SELECT 
+            pr.*,
+            u_requester.nickname as requester_nickname, u_requester.avatar as requester_avatar,
+            u_target.nickname as target_nickname, u_target.avatar as target_avatar, u_target.phone as target_phone
+        FROM phone_requests pr
+        JOIN users u_requester ON pr.requester_id = u_requester.id
+        JOIN users u_target ON pr.target_id = u_target.id
+        WHERE 1=1
+    `;
+    const params = [];
+
+    if (type === 'sent') {
+        query += ' AND pr.requester_id = ?';
+        params.push(userId);
+    } else if (type === 'received') {
+        query += ' AND pr.target_id = ?';
+        params.push(userId);
+    } else {
+        query += ' AND (pr.requester_id = ? OR pr.target_id = ?)';
+        params.push(userId, userId);
+    }
+
+    query += ' ORDER BY pr.created_at DESC';
+
+    db.all(query, params, (err, requests) => {
+        if (err) {
+            return res.status(500).json(errorResponse(9999, '服务器错误'));
+        }
+
+        const formattedRequests = requests.map(r => ({
+            id: r.id,
+            requester: {
+                id: r.requester_id,
+                nickname: r.requester_nickname,
+                avatar: r.requester_avatar || '/images/default-avatar.png'
+            },
+            target: {
+                id: r.target_id,
+                nickname: r.target_nickname,
+                avatar: r.target_avatar || '/images/default-avatar.png',
+                phone: r.requester_id === userId && r.status === 'accepted' ? r.target_phone : null
+            },
+            status: r.status,
+            createdAt: formatDate(r.created_at),
+            isRequester: r.requester_id === userId,
+            isTarget: r.target_id === userId
+        }));
+
+        res.json(successResponse(formattedRequests));
+    });
+});
+
+// 处理手机号申请
+app.put('/api/v1/phone-requests/:id', authenticateToken, (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body; // accepted 或 rejected
+    const userId = req.user.id;
+
+    if (!status || !['accepted', 'rejected'].includes(status)) {
+        return res.status(400).json(errorResponse(1002, '请提供有效的状态'));
+    }
+
+    // 查询申请
+    db.get('SELECT * FROM phone_requests WHERE id = ?', [id], (err, request) => {
+        if (err || !request) {
+            return res.status(404).json(errorResponse(3001, '申请记录不存在'));
+        }
+
+        // 只有目标用户可以处理
+        if (request.target_id !== userId) {
+            return res.status(403).json(errorResponse(3003, '无权处理此申请'));
+        }
+
+        if (request.status !== 'pending') {
+            return res.status(400).json(errorResponse(1001, '该申请已处理'));
+        }
+
+        // 更新状态
+        db.run(
+            'UPDATE phone_requests SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+            [status, id],
+            (err) => {
+                if (err) {
+                    return res.status(500).json(errorResponse(9999, '处理失败'));
+                }
+
+                const message = status === 'accepted' ? '已同意申请' : '已拒绝申请';
+                res.json(successResponse({ id, status }, message));
             }
         );
     });

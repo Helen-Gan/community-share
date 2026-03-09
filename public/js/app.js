@@ -9,33 +9,33 @@ function checkAuth() {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
 
     // 更新导航栏
-    const navLogin = document.querySelector('.nav-login');
-    const navRegister = document.querySelector('.nav-register');
-    const navUser = document.querySelector('.nav-user');
-    const navLogout = document.querySelector('.nav-logout');
-    const navMyItems = document.querySelector('.nav-myitems');
-    const navPublish = document.querySelector('.nav-publish');
+        const navLogin = document.querySelector('.nav-login');
+        const navRegister = document.querySelector('.nav-register');
+        const navUser = document.querySelector('.nav-user');
+        const navLogout = document.querySelector('.nav-logout');
+        const navTransactions = document.querySelector('.nav-transactions');
+        const navChat = document.querySelector('.nav-chat');
 
-    if (token && user.id) {
-        // 已登录
-        if (navLogin) navLogin.style.display = 'none';
-        if (navRegister) navRegister.style.display = 'none';
-        if (navUser) {
-            navUser.textContent = user.nickname;
-            navUser.style.display = 'inline';
+        if (token && user.id) {
+            // 已登录
+            if (navLogin) navLogin.style.display = 'none';
+            if (navRegister) navRegister.style.display = 'none';
+            if (navUser) {
+                navUser.innerHTML = `<a href="profile.html?id=${user.id}" style="color: inherit; text-decoration: none;">${user.nickname}</a>`;
+                navUser.style.display = 'inline';
+            }
+            if (navLogout) navLogout.style.display = 'inline';
+            if (navTransactions) navTransactions.style.display = 'inline';
+            if (navChat) navChat.style.display = 'inline';
+        } else {
+            // 未登录
+            if (navLogin) navLogin.style.display = 'inline';
+            if (navRegister) navRegister.style.display = 'inline';
+            if (navUser) navUser.style.display = 'none';
+            if (navLogout) navLogout.style.display = 'none';
+            if (navTransactions) navTransactions.style.display = 'none';
+            if (navChat) navChat.style.display = 'none';
         }
-        if (navLogout) navLogout.style.display = 'inline';
-        if (navMyItems) navMyItems.style.display = 'inline';
-        if (navPublish) navPublish.style.display = 'inline';
-    } else {
-        // 未登录
-        if (navLogin) navLogin.style.display = 'inline';
-        if (navRegister) navRegister.style.display = 'inline';
-        if (navUser) navUser.style.display = 'none';
-        if (navLogout) navLogout.style.display = 'none';
-        if (navMyItems) navMyItems.style.display = 'none';
-        if (navPublish) navPublish.style.display = 'none';
-    }
 
     // 退出登录
     if (navLogout) {

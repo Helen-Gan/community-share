@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>私信 - 社区闲置物品交换平台</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .chat-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            height: calc(100vh - 60px);
+            display: flex;
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        }
+        .conversation-list {
+            width: 300px;
+            border-right: 1px solid #f0f0f0;
+            display: flex;
+            flex-direction: column;
+        }
+        .list-header {
+            padding: 16px;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        .conversations {
+            flex: 1;
+            overflow-y: auto;
+        }
+        .conversation-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+            border-bottom: 1px solid #f8f8f8;
+        }
+        .conversation-item:hover, .conversation-item.active {
+            background: #f6ffed;
+        }
+        .conversation-item img {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+        }
+        .conversation-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .conversation-name {
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+        .conversation-preview {
+            font-size: 13px;
+            color: #999;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .conversation-meta {
+            text-align: right;
+        }
+        .conversation-time {
+            font-size: 12px;
+            color: #999;
+        }
+        .unread-badge {
+            display: inline-block;
+            background: #f5222d;
+            color: white;
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-top: 4px;
+        }
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .chat-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .chat-header img {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+        }
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .message {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .message.self {
+            flex-direction: row-reverse;
+        }
+        .message img {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+        }
+        .message-content {
+            max-width: 60%;
+        }
+        .message-bubble {
+            padding: 12px 16px;
+            border-radius: 16px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .message:not(.self) .message-bubble {
+            background: white;
+            border-bottom-left-radius: 4px;
+        }
+        .message.self .message-bubble {
+            background: #95ec69;
+            border-bottom-right-radius: 4px;
+        }
+        .message-time {
+            font-size: 11px;
+            color: #999;
+            margin-top: 4px;
+            text-align: right;
+        }
+        .chat-input {
+            padding: 16px 20px;
+            border-top: 1px solid #f0f0f0;
+            display: flex;
+            gap: 12px;
+        }
+        .chat-input input {
+            flex: 1;
+            padding: 10px 16px;
+            border: 1px solid #d9d9d9;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+        .chat-input button {
+            padding: 10px 24px;
+            background: #1890ff;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+        .chat-input button:hover {
+            background: #40a9ff;
+        }
+        .empty-chat {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+        }
+        .empty-chat-icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand"><a href="/"><h1>🏠 社区闲置交换</h1></a></div>
+            <div class="nav-menu">
+                <a href="/">首页</a>
+                <a href="transactions.html" class="nav-transactions" style="display: none;">我的交易</a>
+                <div class="nav-auth">
+                    <a href="login.html" class="nav-login">登录</a>
+                    <a href="register.html" class="nav-register">注册</a>
+                    <span class="nav-user" style="display: none;"></span>
+                    <a href="#" class="nav-logout" style="display: none;">退出</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main-content" style="padding: 20px;">
+        <div class="chat-container">
+            <div class="conversation-list">
+                <div class="list-header">💬 消息列表</div>
+                <div id="conversationList" class="conversations">
+                    <div class="loading" style="padding: 20px;">加载中...</div>
+                </div>
+            </div>
+            <div class="chat-area" id="chatArea">
+                <div class="empty-chat">
+                    <div class="empty-chat-icon">💬</div>
+                    <p>选择一个会话开始聊天</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/app.js"></script>
+    <script>
+        let currentConversationId = null;
+        let currentOtherUser = null;
+        let messages = [];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAuth();
+            const token = localStorage.getItem('token');
+            if (!token) {
+                window.location.href = 'login.html';
+                return;
+            }
+            loadConversations();
+            
+            // 检查URL参数
+            const urlParams = new URLSearchParams(window.location.search);
+            const conversationId = urlParams.get('conversationId');
+            if (conversationId) {
+                setTimeout(() => loadChat(parseInt(conversationId)), 500);
+            }
+        });
+
+        // 加载会话列表
+        async function loadConversations() {
+            const token = localStorage.getItem('token');
+            try {
+                const res = await fetch('/api/v1/conversations', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await res.json();
+                if (result.success) {
+                    renderConversations(result.data);
+                }
+            } catch (error) {
+                console.error('加载会话失败:', error);
+            }
+        }
+
+        // 渲染会话列表
+        function renderConversations(list) {
+            const container = document.getElementById('conversationList');
+            if (!list || list.length === 0) {
+                container.innerHTML = '<div style="padding: 40px; text-align: center; color: #999;">暂无消息</div>';
+                return;
+            }
+
+            container.innerHTML = list.map(c => `
+                <div class="conversation-item ${c.id === currentConversationId ? 'active' : ''}" onclick="loadChat(${c.id})">
+                    <img src="${c.otherUser.avatar}" alt="${c.otherUser.nickname}">
+                    <div class="conversation-info">
+                        <div class="conversation-name">${c.otherUser.nickname}</div>
+                        <div class="conversation-preview">${c.lastMessage || '暂无消息'}</div>
+                    </div>
+                    <div class="conversation-meta">
+                        <div class="conversation-time">${c.lastMessageTime || ''}</div>
+                        ${c.unreadCount > 0 ? `<span class="unread-badge">${c.unreadCount}</span>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 加载聊天
+        async function loadChat(conversationId) {
+            currentConversationId = conversationId;
+            const token = localStorage.getItem('token');
+
+            // 更新选中状态
+            document.querySelectorAll('.conversation-item').forEach(el => {
+                el.classList.toggle('active', el.onclick.toString().includes(conversationId));
+            });
+
+            try {
+                // 获取会话消息
+                const res = await fetch(`/api/v1/conversations/${conversationId}/messages`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await res.json();
+                
+                if (result.success) {
+                    messages = result.data;
+                    if (messages.length > 0) {
+                        // 获取对方信息
+                        const otherUser = messages[0].isSelf ? messages[0].sender : messages.find(m => !m.isSelf)?.sender;
+                        currentOtherUser = otherUser;
+                        renderChat(otherUser, messages);
+                    }
+                    // 刷新会话列表（清除未读）
+                    loadConversations();
+                }
+            } catch (error) {
+                console.error('加载消息失败:', error);
+            }
+        }
+
+        // 渲染聊天界面
+        function renderChat(otherUser, msgs) {
+            const chatArea = document.getElementById('chatArea');
+            chatArea.innerHTML = `
+                <div class="chat-header">
+                    <img src="${otherUser.avatar}" alt="${otherUser.nickname}">
+                    <div>
+                        <div style="font-weight: 600;">${otherUser.nickname}</div>
+                        <div style="font-size: 12px; color: #999;">点击头像查看主页</div>
+                    </div>
+                </div>
+                <div class="chat-messages" id="messageList">
+                    ${msgs.map(m => renderMessage(m)).join('')}
+                </div>
+                <div class="chat-input">
+                    <input type="text" id="messageInput" placeholder="输入消息..." onkeypress="if(event.key==='Enter')sendMessage()">
+                    <button onclick="sendMessage()">发送</button>
+                </div>
+            `;
+            
+            // 滚动到底部
+            const list = document.getElementById('messageList');
+            if (list) list.scrollTop = list.scrollHeight;
+            
+            // 聚焦输入框
+            setTimeout(() => document.getElementById('messageInput')?.focus(), 100);
+        }
+
+        // 渲染单条消息
+        function renderMessage(m) {
+            return `
+                <div class="message ${m.isSelf ? 'self' : ''}">
+                    <img src="${m.sender.avatar}" alt="${m.sender.nickname}">
+                    <div class="message-content">
+                        <div class="message-bubble">${escapeHtml(m.content)}</div>
+                        <div class="message-time">${m.createdAt}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 发送消息
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const content = input.value.trim();
+            if (!content || !currentConversationId) return;
+
+            const token = localStorage.getItem('token');
+            
+            // 清空输入框
+            input.value = '';
+
+            try {
+                const res = await fetch(`/api/v1/conversations/${currentConversationId}/messages`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ content })
+                });
+                const result = await res.json();
+                
+                if (result.success) {
+                    // 重新加载消息
+                    loadChat(currentConversationId);
+                    // 刷新会话列表
+                    loadConversations();
+                } else {
+                    showToast(result.error.message, 'error');
+                }
+            } catch (error) {
+                showToast('发送失败', 'error');
+            }
+        }
+
+        // HTML转义
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 定期刷新（每30秒）
+        setInterval(() => {
+            if (localStorage.getItem('token')) {
+                loadConversations();
+                if (currentConversationId) {
+                    loadChat(currentConversationId);
+                }
+            }
+        }, 30000);
+    </script>
+</body>
+</html>

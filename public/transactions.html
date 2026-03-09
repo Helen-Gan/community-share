@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的交易 - 社区闲置物品交换平台</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .transactions-container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+        .page-header { margin-bottom: 24px; }
+        .page-header h1 { font-size: 24px; margin-bottom: 8px; }
+        .filter-bar { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+        .filter-btn { padding: 8px 16px; border: 1px solid #ddd; background: white; border-radius: 20px; cursor: pointer; }
+        .filter-btn:hover, .filter-btn.active { background: #1890ff; color: white; border-color: #1890ff; }
+        .transaction-list { display: flex; flex-direction: column; gap: 16px; }
+        .transaction-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; gap: 16px; }
+        .transaction-image { width: 120px; height: 120px; flex-shrink: 0; border-radius: 8px; overflow: hidden; }
+        .transaction-image img { width: 100%; height: 100%; object-fit: cover; }
+        .transaction-content { flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
+        .transaction-title { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+        .transaction-meta { display: flex; gap: 16px; color: #666; font-size: 14px; margin-bottom: 12px; }
+        .transaction-user { display: flex; align-items: center; gap: 8px; }
+        .transaction-user img { width: 28px; height: 28px; border-radius: 50%; }
+        .transaction-status { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 500; margin-left: 8px; }
+        .status-pending { background: #fff7e6; color: #fa8c16; }
+        .status-accepted { background: #f6ffed; color: #52c41a; }
+        .status-rejected { background: #fff1f0; color: #f5222d; }
+        .status-completed { background: #e6f7ff; color: #1890ff; }
+        .status-cancelled { background: #f5f5f5; color: #999; }
+        .transaction-actions { display: flex; gap: 10px; margin-top: 12px; }
+        .btn-sm { padding: 6px 16px; font-size: 13px; border-radius: 16px; cursor: pointer; border: none; }
+        .btn-accept { background: #52c41a; color: white; }
+        .btn-reject { background: #f5f5f5; color: #666; }
+        .btn-complete { background: #1890ff; color: white; }
+        .btn-cancel { background: #ff4d4f; color: white; }
+        .btn-detail { background: transparent; color: #1890ff; border: 1px solid #1890ff; }
+        .role-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-left: 8px; }
+        .role-buyer { background: #e6f7ff; color: #1890ff; }
+        .role-seller { background: #f6ffed; color: #52c41a; }
+        .empty-state { text-align: center; padding: 60px 20px; }
+        .pagination { display: flex; justify-content: center; gap: 8px; margin-top: 24px; }
+        .page-btn { padding: 8px 16px; border: 1px solid #ddd; background: white; border-radius: 8px; cursor: pointer; }
+        .page-btn.active { background: #1890ff; color: white; }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand"><a href="/"><h1>🏠 社区闲置交换</h1></a></div>
+            <div class="nav-menu">
+                <a href="/">首页</a>
+                <a href="transactions.html" class="nav-transactions active" style="display: none;">我的交易</a>
+                <a href="chat.html" class="nav-chat" style="display: none;">消息</a>
+                <div class="nav-auth">
+                    <a href="login.html" class="nav-login">登录</a>
+                    <a href="register.html" class="nav-register">注册</a>
+                    <span class="nav-user" style="display: none;"></span>
+                    <a href="#" class="nav-logout" style="display: none;">退出</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        <div class="transactions-container">
+            <div class="page-header">
+                <h1>🤝 我的交易</h1>
+                <p>管理您的交易请求和收到的请求</p>
+            </div>
+            <div class="filter-bar">
+                <button class="filter-btn active" data-type="all" onclick="filterType('all')">全部</button>
+                <button class="filter-btn" data-type="buyer" onclick="filterType('buyer')">我发起的</button>
+                <button class="filter-btn" data-type="seller" onclick="filterType('seller')">我收到的</button>
+            </div>
+            <div class="filter-bar">
+                <button class="filter-btn active" data-status="all" onclick="filterStatus('all')">所有状态</button>
+                <button class="filter-btn" data-status="pending" onclick="filterStatus('pending')">待处理</button>
+                <button class="filter-btn" data-status="accepted" onclick="filterStatus('accepted')">已接受</button>
+                <button class="filter-btn" data-status="completed" onclick="filterStatus('completed')">已完成</button>
+            </div>
+            <div id="transactionList" class="transaction-list"><div class="loading">加载中...</div></div>
+            <div id="pagination" class="pagination" style="display: none;"></div>
+        </div>
+    </main>
+
+    <script src="js/app.js"></script>
+    <script>
+        let currentPage = 1, currentType = 'all', currentStatus = 'all';
+        document.addEventListener('DOMContentLoaded', () => { checkAuth(); loadTransactions(); });
+        function filterType(type) { currentType = type; currentPage = 1; updateFilterBtn('type', type); loadTransactions(); }
+        function filterStatus(status) { currentStatus = status; currentPage = 1; updateFilterBtn('status', status); loadTransactions(); }
+        function updateFilterBtn(dataAttr, value) { document.querySelectorAll(`.filter-btn[data-${dataAttr}]`).forEach(btn => btn.classList.toggle('active', btn.dataset[dataAttr] === value)); }
+        async function loadTransactions() {
+            const token = localStorage.getItem('token');
+            if (!token) { window.location.href = 'login.html'; return; }
+            const container = document.getElementById('transactionList');
+            container.innerHTML = '<div class="loading">加载中...</div>';
+            try {
+                const params = new URLSearchParams({ page: currentPage, pageSize: 10, type: currentType, status: currentStatus });
+                const response = await fetch(`/api/v1/transactions?${params}`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const result = await response.json();
+                if (result.success) { renderTransactions(result.data); renderPagination(result.pagination); }
+                else { container.innerHTML = '<div class="empty-state"><h3>加载失败</h3></div>'; }
+            } catch (error) { container.innerHTML = '<div class="empty-state"><h3>加载失败</h3></div>'; }
+        }
+        function renderTransactions(list) {
+            const container = document.getElementById('transactionList');
+            if (!list || list.length === 0) { container.innerHTML = '<div class="empty-state"><h3>📭 暂无交易记录</h3></div>'; return; }
+            const statusMap = { pending: { text: '待处理', class: 'status-pending' }, accepted: { text: '已接受', class: 'status-accepted' }, rejected: { text: '已拒绝', class: 'status-rejected' }, completed: { text: '已完成', class: 'status-completed' }, cancelled: { text: '已取消', class: 'status-cancelled' } };
+            container.innerHTML = list.map(t => {
+                const st = statusMap[t.status] || { text: t.status, class: '' };
+                const other = t.isBuyer ? t.seller : t.buyer;
+                let btns = '<button class="btn-sm btn-detail" onclick="viewDetail(' + t.id + ')">查看</button>';
+                if (t.status === 'pending' && t.isSeller) btns = '<button class="btn-sm btn-accept" onclick="handle(' + t.id + ', \'accept\')">接受</button><button class="btn-sm btn-reject" onclick="handle(' + t.id + ', \'reject\')">拒绝</button>' + btns;
+                else if (t.status === 'accepted') btns = '<button class="btn-sm btn-complete" onclick="complete(' + t.id + ', \'complete\')">完成</button><button class="btn-sm btn-cancel" onclick="complete(' + t.id + ', \'cancel\')">取消</button>' + btns;
+                return '<div class="transaction-card"><div class="transaction-image"><img src="' + t.item.thumbnailUrl + '" alt="' + t.item.title + '"></div><div class="transaction-content"><div><div class="transaction-title">' + t.item.title + '<span class="role-tag ' + (t.isBuyer ? 'role-buyer' : 'role-seller') + '">' + (t.isBuyer ? '买家' : '卖家') + '</span><span class="transaction-status ' + st.class + '">' + st.text + '</span></div><div class="transaction-meta"><span>💰 ' + (t.item.price ? '¥' + t.item.price : '免费') + '</span><span>📦 ' + t.item.condition + '</span><span>📅 ' + t.createdAt + '</span></div><div class="transaction-user"><img src="' + other.avatar + '">' + (t.isBuyer ? '卖家' : '买家') + '：' + other.nickname + '</div></div><div class="transaction-actions">' + btns + '</div></div></div>';
+            }).join('');
+        }
+        function renderPagination(pg) {
+            const el = document.getElementById('pagination');
+            if (!pg || pg.total <= pg.pageSize) { el.style.display = 'none'; return; }
+            const total = Math.ceil(pg.total / pg.pageSize);
+            let html = '<button class="page-btn" onclick="changePage(' + (currentPage - 1) + ')" ' + (currentPage === 1 ? 'disabled' : '') + '>上一页</button>';
+            for (let i = 1; i <= total; i++) if (i === 1 || i === total || Math.abs(i - currentPage) <= 1) html += '<button class="page-btn ' + (i === currentPage ? 'active' : '') + '" onclick="changePage(' + i + ')">' + i + '</button>';
+            html += '<button class="page-btn" onclick="changePage(' + (currentPage + 1) + ')" ' + (currentPage === total ? 'disabled' : '') + '>下一页</button>';
+            el.innerHTML = html; el.style.display = 'flex';
+        }
+        function changePage(p) { currentPage = p; loadTransactions(); }
+        async function handle(id, action) {
+            if (!confirm((action === 'accept' ? '接受' : '拒绝') + '这笔交易?')) return;
+            const res = await fetch('/api/v1/transactions/' + id + '/handle', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('token') }, body: JSON.stringify({ action }) });
+            const data = await res.json(); showToast(data.success ? '操作成功' : data.error.message, data.success ? 'success' : 'error'); if (data.success) loadTransactions();
+        }
+        async function complete(id, action) {
+            if (!confirm((action === 'complete' ? '完成' : '取消') + '这笔交易?')) return;
+            const res = await fetch('/api/v1/transactions/' + id + '/complete', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('token') }, body: JSON.stringify({ action }) });
+            const data = await res.json(); showToast(data.success ? '操作成功' : data.error.message, data.success ? 'success' : 'error'); if (data.success) loadTransactions();
+        }
+        function viewDetail(id) { window.location.href = 'transaction-detail.html?id=' + id; }
+    </script>
+</body>
+</html>

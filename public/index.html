@@ -5,6 +5,51 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>社区闲置物品交换平台</title>
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        /* 推荐区域占位提示样式 */
+        .recommendation-placeholder {
+            min-width: 300px;
+            height: 200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            margin: 0 auto;
+        }
+        .recommendation-placeholder .placeholder-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+            opacity: 0.8;
+        }
+        .recommendation-placeholder .placeholder-text {
+            font-size: 16px;
+            color: #333;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+        .recommendation-placeholder .placeholder-hint {
+            font-size: 13px;
+            color: #888;
+        }
+        .recommendation-placeholder .placeholder-btn {
+            margin-top: 12px;
+            padding: 8px 20px;
+            background: #1890ff;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .recommendation-placeholder .placeholder-btn:hover {
+            background: #40a9ff;
+        }
+    </style>
 </head>
 <body>
     <!-- 导航栏 -->
@@ -15,8 +60,8 @@
             </div>
             <div class="nav-menu">
                 <a href="/" class="active">首页</a>
-                <a href="myitems.html" class="nav-myitems" style="display: none;">我的物品</a>
-                <a href="publish.html" class="nav-publish" style="display: none;">发布物品</a>
+                <a href="transactions.html" class="nav-transactions" style="display: none;">我的交易</a>
+                <a href="chat.html" class="nav-chat" style="display: none;">消息</a>
                 <div class="nav-auth">
                     <a href="login.html" class="nav-login">登录</a>
                     <a href="register.html" class="nav-register">注册</a>
@@ -31,7 +76,7 @@
     <main class="main-content">
         <div class="container">
             <!-- 猜你喜欢：个性化推荐区域 -->
-            <div id="recommendationsSection" class="recommendations-section" style="display: none;">
+            <div id="recommendationsSection" class="recommendations-section">
                 <div class="section-header">
                     <h2 class="section-title">💡 猜你喜欢</h2>
                     <span class="section-subtitle">基于你的浏览记录推荐</span>
@@ -122,11 +167,20 @@
         let currentPage = 1;
         let hasMore = true;
 
-        // 加载个性化推荐（猜你喜欢）
+        // 加载个性化推荐（猜你喜欢）- 始终显示区域
         async function loadRecommendations() {
+            const container = document.getElementById('recommendationsList');
             const token = localStorage.getItem('token');
+
+            // 未登录状态：显示登录提示
             if (!token) {
-                // 未登录用户不显示推荐
+                container.innerHTML = `
+                    <div class="recommendation-placeholder">
+                        <div class="placeholder-icon">🔒</div>
+                        <div class="placeholder-text">登录后查看个性化推荐</div>
+                        <button class="placeholder-btn" onclick="window.location.href='login.html'">立即登录</button>
+                    </div>
+                `;
                 return;
             }
 
@@ -138,10 +192,8 @@
                 });
                 const result = await response.json();
 
-                if (result.success && result.data && result.data.length >= 3) {
-                    const container = document.getElementById('recommendationsList');
-                    const section = document.getElementById('recommendationsSection');
-
+                if (result.success && result.data && result.data.length >= 1) {
+                    // 有推荐数据：渲染推荐卡片
                     container.innerHTML = result.data.map(item => `
                         <div class="recommendation-card" onclick="window.location.href='detail.html?id=${item.id}'">
                             <div class="recommendation-image">
@@ -160,13 +212,26 @@
                             </div>
                         </div>
                     `).join('');
-
-                    // 显示推荐区域
-                    section.style.display = 'block';
+                } else {
+                    // 无推荐数据：显示友好提示
+                    container.innerHTML = `
+                        <div class="recommendation-placeholder">
+                            <div class="placeholder-icon">🔍</div>
+                            <div class="placeholder-text">暂无推荐，多逛逛吧～</div>
+                            <div class="placeholder-hint">浏览更多物品，获取个性化推荐</div>
+                        </div>
+                    `;
                 }
             } catch (error) {
                 console.error('加载推荐失败:', error);
-                // 静默失败，不显示推荐区域
+                // 出错时显示友好提示
+                container.innerHTML = `
+                    <div class="recommendation-placeholder">
+                        <div class="placeholder-icon">😅</div>
+                        <div class="placeholder-text">推荐加载失败</div>
+                        <div class="placeholder-hint">请稍后重试</div>
+                    </div>
+                `;
             }
         }
 

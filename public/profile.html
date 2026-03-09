@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>个人主页 - 社区闲置物品交换平台</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .profile-container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+        .profile-header {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+            display: flex;
+            gap: 24px;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        .profile-avatar {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid #f0f0f0;
+        }
+        .profile-info { flex: 1; }
+        .profile-name {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .profile-reputation {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: #fff7e6;
+            color: #fa8c16;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 14px;
+        }
+        .profile-bio {
+            color: #666;
+            margin-top: 8px;
+            line-height: 1.6;
+        }
+        .profile-meta {
+            color: #999;
+            font-size: 13px;
+            margin-top: 8px;
+        }
+        .profile-actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .btn-profile {
+            padding: 10px 24px;
+            border-radius: 24px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: none;
+        }
+        .btn-edit {
+            background: #1890ff;
+            color: white;
+        }
+        .btn-edit:hover { background: #40a9ff; }
+        .btn-publish {
+            background: #52c41a;
+            color: white;
+        }
+        .btn-publish:hover { background: #73d13d; }
+        .btn-contact {
+            background: #1890ff;
+            color: white;
+        }
+        .btn-contact:hover { background: #40a9ff; }
+        .btn-phone {
+            background: #fa8c16;
+            color: white;
+        }
+        .btn-phone:hover { background: #ffa940; }
+        .items-section {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        }
+        .items-section h2 {
+            font-size: 18px;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .items-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 16px;
+        }
+        .item-card {
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #f0f0f0;
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+            position: relative;
+        }
+        .item-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+        }
+        .item-card img {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+        }
+        .item-card-info { padding: 12px; }
+        .item-card-title {
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 8px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .item-card-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+        }
+        .item-card-price { color: #f5222d; font-weight: 600; }
+        .item-card-status {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+        .status-available { background: #f6ffed; color: #52c41a; }
+        .status-reserved { background: #fff7e6; color: #fa8c16; }
+        .status-traded { background: #f5f5f5; color: #999; }
+        .item-card-actions {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            display: flex;
+            gap: 6px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .item-card:hover .item-card-actions {
+            opacity: 1;
+        }
+        .item-action-btn {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+        .item-action-btn.edit {
+            background: #1890ff;
+            color: white;
+        }
+        .item-action-btn.delete {
+            background: #ff4d4f;
+            color: white;
+        }
+        .empty-items {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 24px;
+        }
+        .page-btn {
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .page-btn.active {
+            background: #1890ff;
+            color: white;
+            border-color: #1890ff;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal.active { display: flex; }
+        .modal-content {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            width: 90%;
+            max-width: 400px;
+        }
+        .modal-header {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+        .form-group { margin-bottom: 16px; }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #333;
+        }
+        .form-group input, .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #d9d9d9;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        .form-group textarea { resize: vertical; min-height: 80px; }
+        .avatar-upload {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .avatar-preview {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand"><a href="/"><h1>🏠 社区闲置交换</h1></a></div>
+            <div class="nav-menu">
+                <a href="/">首页</a>
+                <a href="transactions.html" class="nav-transactions" style="display: none;">我的交易</a>
+                <a href="chat.html" class="nav-chat" style="display: none;">消息</a>
+                <div class="nav-auth">
+                    <a href="login.html" class="nav-login">登录</a>
+                    <a href="register.html" class="nav-register">注册</a>
+                    <span class="nav-user" style="display: none;"></span>
+                    <a href="#" class="nav-logout" style="display: none;">退出</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        <div class="profile-container">
+            <div class="profile-header" id="profileHeader">
+                <div class="loading">加载中...</div>
+            </div>
+            <div class="items-section">
+                <h2>📦 发布的物品</h2>
+                <div id="itemsGrid" class="items-grid">
+                    <div class="loading">加载中...</div>
+                </div>
+                <div id="pagination" class="pagination" style="display: none;"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 编辑资料弹窗 -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">编辑个人资料</div>
+            <div class="form-group">
+                <label>头像</label>
+                <div class="avatar-upload">
+                    <img id="avatarPreview" class="avatar-preview" src="/images/default-avatar.png">
+                    <input type="file" id="avatarInput" accept="image/*" style="display: none;">
+                    <button class="btn-profile btn-edit" onclick="document.getElementById('avatarInput').click()">更换头像</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>昵称</label>
+                <input type="text" id="nicknameInput" maxlength="20">
+            </div>
+            <div class="form-group">
+                <label>个人简介</label>
+                <textarea id="bioInput" maxlength="200" placeholder="介绍一下自己..."></textarea>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-profile" onclick="closeModal()" style="background: #f5f5f5; color: #666;">取消</button>
+                <button class="btn-profile btn-edit" onclick="saveProfile()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script>
+        let currentUserId = null;
+        let profileData = null;
+        let currentPage = 1;
+        const pageSize = 12;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAuth();
+            loadProfile();
+        });
+
+        function getUrlParam(name) {
+            const params = new URLSearchParams(window.location.search);
+            return params.get(name);
+        }
+
+        async function loadProfile() {
+            const userId = getUrlParam('id');
+            if (!userId) {
+                const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+                if (currentUser.id) {
+                    window.location.href = `profile.html?id=${currentUser.id}`;
+                } else {
+                    window.location.href = 'login.html';
+                }
+                return;
+            }
+            currentUserId = parseInt(userId);
+            await loadUserInfo();
+            await loadItems(1);
+        }
+
+        async function loadUserInfo() {
+            try {
+                const response = await fetch(`/api/v1/users/${currentUserId}`);
+                const result = await response.json();
+                if (result.success) {
+                    profileData = result.data;
+                    renderProfile(profileData);
+                } else {
+                    showToast('用户不存在', 'error');
+                    window.location.href = '/';
+                }
+            } catch (error) {
+                showToast('加载失败', 'error');
+            }
+        }
+
+        async function loadItems(page) {
+            currentPage = page;
+            try {
+                const response = await fetch(`/api/v1/users/${currentUserId}/items?page=${page}&pageSize=${pageSize}`);
+                const result = await response.json();
+                if (result.success) {
+                    renderItems(result.data.items, result.data.pagination);
+                }
+            } catch (error) {
+                console.error('加载物品失败:', error);
+            }
+        }
+
+        function renderProfile(data) {
+            const header = document.getElementById('profileHeader');
+            const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+            const isSelf = data.user.isSelf;
+            const isLoggedIn = !!localStorage.getItem('token');
+
+            let actionsHtml = '';
+            if (isSelf) {
+                actionsHtml = `
+                    <button class="btn-profile btn-edit" onclick="openEditModal()">✏️ 编辑资料</button>
+                    <button class="btn-profile btn-publish" onclick="window.location.href='publish.html'">➕ 发布新物品</button>
+                `;
+            } else if (isLoggedIn) {
+                actionsHtml = `
+                    <button class="btn-profile btn-contact" onclick="startChat(${data.user.id})">💬 联系</button>
+                    <button class="btn-profile btn-phone" onclick="requestPhone(${data.user.id})">📱 申请手机号</button>
+                `;
+            } else {
+                actionsHtml = `<a href="login.html" class="btn-profile btn-edit">登录后互动</a>`;
+            }
+
+            header.innerHTML = `
+                <img src="${data.user.avatar}" alt="${data.user.nickname}" class="profile-avatar">
+                <div class="profile-info">
+                    <div class="profile-name">
+                        ${data.user.nickname}
+                        <span class="profile-reputation">⭐ 信誉值 ${data.user.reputation}</span>
+                    </div>
+                    ${data.user.bio ? `<div class="profile-bio">${data.user.bio}</div>` : ''}
+                    <div class="profile-meta">注册于 ${data.user.createdAt}</div>
+                </div>
+                <div class="profile-actions">${actionsHtml}</div>
+            `;
+        }
+
+        function renderItems(items, pagination) {
+            const grid = document.getElementById('itemsGrid');
+            const isSelf = profileData && profileData.user.isSelf;
+
+            if (!items || items.length === 0) {
+                grid.innerHTML = '<div class="empty-items">暂无发布的物品</div>';
+                document.getElementById('pagination').style.display = 'none';
+                return;
+            }
+
+            const statusMap = {
+                'available': { text: '可交易', class: 'status-available' },
+                'reserved': { text: '已预留', class: 'status-reserved' },
+                'traded': { text: '已交易', class: 'status-traded' }
+            };
+
+            grid.innerHTML = items.map(item => {
+                const st = statusMap[item.status] || { text: item.status, class: '' };
+                const actionsHtml = isSelf ? `
+                    <div class="item-card-actions">
+                        <button class="item-action-btn edit" onclick="event.stopPropagation(); editItem(${item.id})">✏️</button>
+                        <button class="item-action-btn delete" onclick="event.stopPropagation(); deleteItem(${item.id})">🗑️</button>
+                    </div>
+                ` : '';
+                return `
+                    <div class="item-card" onclick="window.location.href='detail.html?id=${item.id}'">
+                        ${actionsHtml}
+                        <img src="${item.thumbnailUrl}" alt="${item.title}">
+                        <div class="item-card-info">
+                            <div class="item-card-title">${item.title}</div>
+                            <div class="item-card-meta">
+                                <span class="item-card-price">${item.priceDisplay}</span>
+                                <span class="item-card-status ${st.class}">${st.text}</span>
+                            </div>
+                            <div style="font-size: 12px; color: #999; margin-top: 6px;">
+                                👁 ${item.viewCount || 0} · ${item.createdAt}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // 渲染分页
+            if (pagination && pagination.totalPages > 1) {
+                renderPagination(pagination);
+            } else {
+                document.getElementById('pagination').style.display = 'none';
+            }
+        }
+
+        function renderPagination(pg) {
+            const el = document.getElementById('pagination');
+            let html = '';
+            for (let i = 1; i <= pg.totalPages; i++) {
+                html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="loadItems(${i})">${i}</button>`;
+            }
+            el.innerHTML = html;
+            el.style.display = 'flex';
+        }
+
+        function openEditModal() {
+            if (!profileData) return;
+            document.getElementById('nicknameInput').value = profileData.user.nickname;
+            document.getElementById('bioInput').value = profileData.user.bio || '';
+            document.getElementById('avatarPreview').src = profileData.user.avatar;
+            document.getElementById('editModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('editModal').classList.remove('active');
+        }
+
+        document.getElementById('avatarInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('avatarPreview').src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        async function saveProfile() {
+            const token = localStorage.getItem('token');
+            const nickname = document.getElementById('nicknameInput').value.trim();
+            const bio = document.getElementById('bioInput').value.trim();
+            const avatarFile = document.getElementById('avatarInput').files[0];
+
+            if (!nickname) {
+                showToast('昵称不能为空', 'error');
+                return;
+            }
+
+            try {
+                if (avatarFile) {
+                    const formData = new FormData();
+                    formData.append('avatar', avatarFile);
+                    await fetch('/api/v1/upload/avatar', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        body: formData
+                    });
+                }
+
+                const res = await fetch(`/api/v1/users/${currentUserId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ nickname, bio })
+                });
+
+                const result = await res.json();
+                if (result.success) {
+                    showToast('保存成功', 'success');
+                    closeModal();
+                    loadUserInfo();
+                    checkAuth();
+                } else {
+                    showToast(result.error.message, 'error');
+                }
+            } catch (error) {
+                showToast('保存失败', 'error');
+            }
+        }
+
+        function editItem(itemId) {
+            window.location.href = `edit.html?id=${itemId}`;
+        }
+
+        async function deleteItem(itemId) {
+            if (!confirm('确定要删除这个物品吗？此操作不可恢复。')) return;
+            const token = localStorage.getItem('token');
+            try {
+                const res = await fetch(`/api/v1/items/${itemId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await res.json();
+                if (result.success) {
+                    showToast('删除成功', 'success');
+                    loadItems(currentPage);
+                } else {
+                    showToast(result.error.message, 'error');
+                }
+            } catch (error) {
+                showToast('删除失败', 'error');
+            }
+        }
+
+        async function startChat(userId) {
+            const token = localStorage.getItem('token');
+            if (!token) { window.location.href = 'login.html'; return; }
+            try {
+                const res = await fetch('/api/v1/conversations', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ userId })
+                });
+                const result = await res.json();
+                if (result.success) {
+                    window.location.href = `chat.html?conversationId=${result.data.id}`;
+                } else {
+                    showToast(result.error.message, 'error');
+                }
+            } catch (error) {
+                showToast('操作失败', 'error');
+            }
+        }
+
+        async function requestPhone(userId) {
+            const token = localStorage.getItem('token');
+            if (!token) { window.location.href = 'login.html'; return; }
+            if (!confirm('确定要向该用户申请查看手机号吗？')) return;
+            try {
+                const res = await fetch('/api/v1/phone-requests', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ targetId: userId })
+                });
+                const result = await res.json();
+                showToast(result.success ? '申请已发送' : result.error.message, result.success ? 'success' : 'error');
+            } catch (error) {
+                showToast('申请失败', 'error');
+            }
+        }
+
+        document.getElementById('editModal').addEventListener('click', function(e) {
+            if (e.target === this) closeModal();
+        });
+    </script>
+</body>
+</html>

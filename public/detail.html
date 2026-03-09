@@ -5,6 +5,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>物品详情 - 社区闲置物品交换平台</title>
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        /* 交易按钮样式 */
+        .btn-trade {
+            display: block;
+            width: 100%;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #ff6b6b 0%, #ff8e8e 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+        .btn-trade:hover {
+            background: linear-gradient(135deg, #ff5252 0%, #ff7979 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+        }
+        .contact-info {
+            display: flex;
+            flex-direction: column;
+        }
+    </style>
 </head>
 <body>
     <!-- 导航栏 -->
@@ -15,8 +41,8 @@
             </div>
             <div class="nav-menu">
                 <a href="/">首页</a>
-                <a href="myitems.html" class="nav-myitems" style="display: none;">我的物品</a>
-                <a href="publish.html" class="nav-publish" style="display: none;">发布物品</a>
+                <a href="transactions.html" class="nav-transactions" style="display: none;">我的交易</a>
+                <a href="chat.html" class="nav-chat" style="display: none;">消息</a>
                 <div class="nav-auth">
                     <a href="login.html" class="nav-login">登录</a>
                     <a href="register.html" class="nav-register">注册</a>
@@ -106,6 +132,10 @@
 
             // 构建联系方式HTML
             let contactHtml = '';
+            const user = JSON.parse(localStorage.getItem('user') || '{}');
+            const isLoggedIn = localStorage.getItem('token');
+            const isOwner = isLoggedIn && user.id === item.user.id;
+
             if (item.contact.visible) {
                 contactHtml = `
                     <div class="contact-info visible">
@@ -118,26 +148,23 @@
                         <button class="btn-outline" onclick="copyContact('${item.contact.value}')">复制联系方式</button>
                     </div>
                 `;
+            } else if (isOwner) {
+                contactHtml = `<div class="contact-info"><p>这是您发布的物品</p></div>`;
+            } else if (isLoggedIn) {
+                // 已登录非所有者：显示联系按钮和交易按钮
+                contactHtml = `
+                    <div class="contact-info">
+                        <button class="btn-primary" onclick="contactPublisher(${item.id})" style="margin-bottom: 10px;">联系发布者</button>
+                        <button class="btn-trade" onclick="requestTrade(${item.id})">🎁 我想要</button>
+                    </div>
+                `;
             } else {
-                const user = JSON.parse(localStorage.getItem('user') || '{}');
-                const isLoggedIn = localStorage.getItem('token');
-                
-                if (isLoggedIn && user.id === item.user.id) {
-                    contactHtml = `<div class="contact-info"><p>这是您发布的物品</p></div>`;
-                } else if (isLoggedIn) {
-                    contactHtml = `
-                        <div class="contact-info">
-                            <button class="btn-primary" onclick="contactPublisher(${item.id})">联系发布者</button>
-                        </div>
-                    `;
-                } else {
-                    contactHtml = `
-                        <div class="contact-info">
-                            <p>登录后查看联系方式</p>
-                            <a href="login.html" class="btn-primary">立即登录</a>
-                        </div>
-                    `;
-                }
+                contactHtml = `
+                    <div class="contact-info">
+                        <p>登录后查看联系方式</p>
+                        <a href="login.html" class="btn-primary">立即登录</a>
+                    </div>
+                `;
             }
 
             container.innerHTML = `
@@ -182,10 +209,10 @@
                             <p>${item.description.replace(/\n/g, '<br>')}</p>
                         </div>
 
-                        <div class="detail-user">
+                        <div class="detail-user" onclick="window.location.href='profile.html?id=${item.user.id}'" style="cursor: pointer;">
                             <img src="${item.user.avatar}" alt="${item.user.nickname}">
                             <div class="user-info">
-                                <div class="user-name">${item.user.nickname}</div>
+                                <div class="user-name" style="color: #1890ff; text-decoration: underline;">${item.user.nickname}</div>
                                 <div class="user-reputation">信誉值：${item.user.reputation}</div>
                             </div>
                         </div>
@@ -241,6 +268,46 @@
             } catch (error) {
                 console.error('联系失败:', error);
                 showToast('联系失败，请重试', 'error');
+            }
+        }
+
+        // 发起交易请求
+        async function requestTrade(itemId) {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                showToast('请先登录', 'error');
+                window.location.href = 'login.html';
+                return;
+            }
+
+            if (!confirm('确定要发起交易请求吗？\n卖家接受后，双方可以看到对方的联系方式。')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/v1/transactions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ itemId: itemId })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast('交易请求已发送，请等待卖家处理', 'success');
+                    // 跳转到我的交易页面
+                    setTimeout(() => {
+                        window.location.href = 'transactions.html';
+                    }, 1500);
+                } else {
+                    showToast(result.error.message, 'error');
+                }
+            } catch (error) {
+                console.error('发起交易失败:', error);
+                showToast('发起交易失败，请重试', 'error');
             }
         }
 
